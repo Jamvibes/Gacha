@@ -140,7 +140,12 @@ export default function Home() {
         <div className="gameShell">
           <div className="field" aria-label="Tower defence battlefield">
             <div className="sun"/><div className="cloud cloudOne">☁</div><div className="cloud cloudTwo">☁</div>
-            {Array.from({ length: 40 }, (_, i) => <div key={i} className={`cell ${PATH.includes(i) ? "path" : ""}`} />)}
+            {Array.from({ length: 40 }, (_, i) => <div key={i} className={`cell terrain-${i % 4} ${PATH.includes(i) ? `path path-${PATH.indexOf(i) % 4}` : ""}`} />)}
+            <div className="meadowDecor" aria-hidden="true">
+              <i className="flower flowerOne"/><i className="flower flowerTwo"/><i className="flower flowerThree"/>
+              <i className="mushroom mushroomOne"/><i className="mushroom mushroomTwo"/>
+              <i className="pebbles pebblesOne"/><i className="pebbles pebblesTwo"/>
+            </div>
             <div className="portal start">🌀<small>GLOOM</small></div><div className="tree">🌳<small>HEART TREE</small></div>
             {SLOTS.map((cell, slot) => {
               const tower = towers.find(t => t.slot === slot);
