@@ -21,9 +21,17 @@ const CRITTERS: Critter[] = [
   { id: "moonowl", name: "Moonowl", title: "Star Watcher", icon: "🦉", color: "#9b88e8", cost: 95, damage: 48, speed: 5, range: 4, rarity: "Epic", skill: "Piercing moonbeam" },
 ];
 
-const PATH = [8,9,10,11,19,27,26,25,24,32,33,34,35,36,28,20,21,22,23,31,39];
-const SLOTS = [2, 5, 13, 17, 30, 38];
-const cellPoint = (cell: number) => ({ x: (cell % 8) * 12.5 + 6.25, y: Math.floor(cell / 8) * 20 + 10 });
+const BOARD_SIZE = 8;
+const PATH = [8,9,10,11,19,27,26,25,24,32,40,41,42,43,44,36,28,20,21,22,23,31,39,47,46,45,53,54,55,63];
+const SLOTS = [2, 5, 13, 17, 30, 34, 38, 49, 51, 60];
+const cellPoint = (cell: number) => ({
+  x: (cell % BOARD_SIZE) * (100 / BOARD_SIZE) + 100 / BOARD_SIZE / 2,
+  y: Math.floor(cell / BOARD_SIZE) * (100 / BOARD_SIZE) + 100 / BOARD_SIZE / 2,
+});
+const cellStyle = (cell: number) => {
+  const point = cellPoint(cell);
+  return { left: `${point.x}%`, top: `${point.y}%` } as React.CSSProperties;
+};
 
 export default function Home() {
   const [tab, setTab] = useState<"battle" | "collection" | "summon">("battle");
@@ -99,7 +107,12 @@ export default function Home() {
         const fired: number[] = [];
         readyTowers.forEach(t => {
           const slotCell = SLOTS[t.slot];
-          const targets = next.filter(e => Math.abs(PATH[Math.floor(e.step)] - slotCell) <= t.critter.range * 5.2);
+          const targets = next.filter(e => {
+            const targetCell = PATH[Math.floor(e.step)];
+            const columnGap = targetCell % BOARD_SIZE - slotCell % BOARD_SIZE;
+            const rowGap = Math.floor(targetCell / BOARD_SIZE) - Math.floor(slotCell / BOARD_SIZE);
+            return Math.hypot(columnGap, rowGap) <= t.critter.range + 0.65;
+          });
           const target = targets.sort((a,b) => b.step - a.step)[0];
           if (target) {
             const starterBoost = starterId === "mossback" ? 1.15 : 1;
@@ -273,7 +286,7 @@ export default function Home() {
         <div className="gameShell">
           <div className="field" aria-label="Tower defence battlefield">
             <div className="sun"/><div className="cloud cloudOne">☁</div><div className="cloud cloudTwo">☁</div>
-            {Array.from({ length: 40 }, (_, i) => <div key={i} className={`cell terrain-${i % 4} ${PATH.includes(i) ? `path path-${PATH.indexOf(i) % 4}` : ""}`} />)}
+            {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => <div key={i} className={`cell terrain-${i % 4} ${PATH.includes(i) ? `path path-${PATH.indexOf(i) % 4}` : ""}`} />)}
             <div className="meadowDecor" aria-hidden="true">
               <i className="flower flowerOne"/><i className="flower flowerTwo"/><i className="flower flowerThree"/>
               <i className="mushroom mushroomOne"/><i className="mushroom mushroomTwo"/>
@@ -282,11 +295,11 @@ export default function Home() {
             <div className="portal start">🌀<small>GLOOM</small></div><div className="tree">🌳<small>HEART TREE</small></div>
             {SLOTS.map((cell, slot) => {
               const tower = towers.find(t => t.slot === slot);
-              return <button key={cell} aria-label={tower ? tower.critter.name : "Empty defender stone"} className={`towerSlot pos-${cell} ${tower ? "filled" : ""}`} onClick={() => placeTower(slot)} style={tower ? {"--critter": tower.critter.color} as React.CSSProperties : undefined}>
+              return <button key={cell} aria-label={tower ? tower.critter.name : "Empty defender stone"} className={`towerSlot ${tower ? "filled" : ""}`} onClick={() => placeTower(slot)} style={{...cellStyle(cell), ...(tower ? {"--critter": tower.critter.color} : {})} as React.CSSProperties}>
                 {tower ? <><span>{tower.critter.icon}</span><small>{tower.critter.name}</small></> : <><span>✦</span><small>PLACE</small></>}
               </button>;
             })}
-            {enemies.map(e => { const p = PATH[Math.min(PATH.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy pos-${p}`}><span>{e.icon}</span><i><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
+            {enemies.map(e => { const p = PATH[Math.min(PATH.length - 1, Math.floor(e.step))]; return <div key={e.id} className="enemy" style={cellStyle(p)}><span>{e.icon}</span><i><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
             {attackFx.map(fx => {
               const from = cellPoint(fx.from); const to = cellPoint(fx.to);
               return <i key={fx.id} className={`attackFx fx-${fx.critterId}`} style={{"--from-x":`${from.x}%`,"--from-y":`${from.y}%`,"--to-x":`${to.x}%`,"--to-y":`${to.y}%`,"--fx-color":fx.color} as React.CSSProperties}><b/></i>;
