@@ -10,6 +10,7 @@ type Critter = {
 type Enemy = { id: number; step: number; hp: number; maxHp: number; kind: string; icon: string };
 type Tower = { slot: number; critter: Critter; cooldown: number };
 type EventChoice = "harvest" | "spring" | "warden";
+type AttackFx = { id: number; from: number; to: number; color: string; critterId: string };
 
 const CRITTERS: Critter[] = [
   { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", skill: "Fast little fireballs" },
@@ -22,10 +23,11 @@ const CRITTERS: Critter[] = [
 
 const PATH = [8,9,10,11,19,27,26,25,24,32,33,34,35,36,28,20,21,22,23,31,39];
 const SLOTS = [2, 5, 13, 17, 30, 38];
+const cellPoint = (cell: number) => ({ x: (cell % 8) * 12.5 + 6.25, y: Math.floor(cell / 8) * 20 + 10 });
 
 export default function Home() {
   const [tab, setTab] = useState<"battle" | "collection" | "summon">("battle");
-  const [owned, setOwned] = useState<string[]>(["emberfox", "bubblefin", "mossback"]);
+  const [owned, setOwned] = useState<string[]>([]);
   const [petals, setPetals] = useState(240);
   const [energy, setEnergy] = useState(120);
   const [lives, setLives] = useState(10);
@@ -40,7 +42,13 @@ export default function Home() {
   const [eventOpen, setEventOpen] = useState(false);
   const [nextWaveNote, setNextWaveNote] = useState("No special conditions");
   const [saveLoaded, setSaveLoaded] = useState(false);
+  const [runUnlocked, setRunUnlocked] = useState<string[]>([]);
+  const [recruitChoices, setRecruitChoices] = useState<Critter[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [attackFx, setAttackFx] = useState<AttackFx[]>([]);
   const enemyId = useRef(1);
+  const attackId = useRef(1);
   const spawnQueue = useRef(0);
   const spawnTimer = useRef(0);
   const waveHpMultiplier = useRef(1);
@@ -55,7 +63,10 @@ export default function Home() {
         setOwned(data.owned || owned);
         setPetals(data.petals ?? petals);
         setStarterId(data.starterId || null);
-        if (data.starterId) setSelected(data.starterId);
+        if (data.starterId) {
+          setSelected(data.starterId);
+          setRunUnlocked([data.starterId]);
+        }
       } catch { /* fresh save */ }
     }
     setSaveLoaded(true);
@@ -66,7 +77,7 @@ export default function Home() {
   }, [owned, petals, starterId, saveLoaded]);
 
   useEffect(() => {
-    if (!running) return;
+    if (!running || paused) return;
     const timer = window.setInterval(() => {
       spawnTimer.current--;
       if (spawnQueue.current > 0 && spawnTimer.current <= 0) {
@@ -94,6 +105,10 @@ export default function Home() {
             const starterBoost = starterId === "mossback" ? 1.15 : 1;
             target.hp -= Math.round(t.critter.damage * starterBoost);
             fired.push(t.slot);
+            const fxId = attackId.current++;
+            const targetCell = PATH[Math.min(PATH.length - 1, Math.floor(target.step))];
+            setAttackFx(fx => [...fx, { id: fxId, from: slotCell, to: targetCell, color: t.critter.color, critterId: t.critter.id }]);
+            window.setTimeout(() => setAttackFx(fx => fx.filter(item => item.id !== fxId)), 520);
           }
         });
         if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: t.critter.speed } : t));
@@ -104,7 +119,7 @@ export default function Home() {
       setEnergy(v => Math.min(200, v + 1));
     }, 280);
     return () => clearInterval(timer);
-  }, [running, towers, wave, starterId]);
+  }, [running, towers, wave, starterId, paused]);
 
   useEffect(() => {
     if (running && spawnQueue.current === 0 && enemies.length === 0) {
@@ -113,9 +128,17 @@ export default function Home() {
       setPetals(p => p + reward);
       setMessage(`Wave ${wave} cleared! Your critters found ${reward} petals.`);
       wavePetalBonus.current = 0;
-      if (wave < 5) setEventOpen(true);
+      if (wave < 5) {
+        if (wave === 1 || wave === 3) {
+          const available = CRITTERS.filter(c => !runUnlocked.includes(c.id));
+          const offset = wave === 3 && available.length > 3 ? 1 : 0;
+          setRecruitChoices([...available.slice(offset, offset + 3), ...available.slice(0, offset)].slice(0, 3));
+        } else {
+          setEventOpen(true);
+        }
+      }
     }
-  }, [enemies, running, wave]);
+  }, [enemies, running, wave, runUnlocked]);
 
   useEffect(() => {
     if (lives <= 0) { setRunning(false); spawnQueue.current = 0; setMessage("The gloom reached the Heart Tree. Regroup and try again!"); }
@@ -123,16 +146,37 @@ export default function Home() {
 
   const selectedCritter = CRITTERS.find(c => c.id === selected)!;
   const ownedCritters = useMemo(() => CRITTERS.filter(c => owned.includes(c.id)), [owned]);
+  const runCritters = useMemo(() => CRITTERS.filter(c => runUnlocked.includes(c.id)), [runUnlocked]);
   const starterCritter = CRITTERS.find(c => c.id === starterId);
 
   function chooseStarter(id: string) {
     const critter = CRITTERS.find(c => c.id === id)!;
     setStarterId(id);
     setSelected(id);
+    setRunUnlocked([id]);
     setOwned(current => current.includes(id) ? current : [...current, id]);
     setEnergy(id === "emberfox" ? 150 : 120);
     setLives(id === "bubblefin" ? 13 : 10);
     setMessage(`${critter.name} has chosen you. Place your first guardian when you are ready!`);
+  }
+
+  function recruitGuardian(id: string) {
+    const critter = CRITTERS.find(c => c.id === id)!;
+    setRunUnlocked(current => current.includes(id) ? current : [...current, id]);
+    setSelected(id);
+    setRecruitChoices([]);
+    setNextWaveNote(`${critter.name} joined this adventure`);
+    setMessage(`${critter.name} heard your call and will fight for the rest of this run!`);
+  }
+
+  function openSettings() {
+    setPaused(true);
+    setSettingsOpen(true);
+  }
+
+  function closeSettings() {
+    setSettingsOpen(false);
+    setPaused(false);
   }
 
   function chooseEvent(choice: EventChoice) {
@@ -162,7 +206,7 @@ export default function Home() {
   }
 
   function startWave() {
-    if (running || lives <= 0 || eventOpen || !starterId) return;
+    if (running || lives <= 0 || eventOpen || recruitChoices.length > 0 || !starterId) return;
     const next = wave + 1; setWave(next); spawnQueue.current = 5 + next * 2 + waveExtraEnemies.current; spawnTimer.current = 0; setRunning(true); setMessage(`Wave ${next} is rustling through the woods…`);
   }
 
@@ -176,7 +220,9 @@ export default function Home() {
     setEnemies([]); setTowers([]); setWave(0);
     setLives(starterId === "bubblefin" ? 13 : 10);
     setEnergy(starterId === "emberfox" ? 150 : 120);
-    setRunning(false); setEventOpen(false); setNextWaveNote("No special conditions");
+    setRunning(false); setPaused(false); setSettingsOpen(false); setEventOpen(false); setRecruitChoices([]); setAttackFx([]); setNextWaveNote("No special conditions");
+    setRunUnlocked(starterId ? [starterId] : []);
+    if (starterId) setSelected(starterId);
     spawnQueue.current = 0; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; wavePetalBonus.current = 0;
     setMessage("A fresh adventure begins!");
   }
@@ -201,6 +247,7 @@ export default function Home() {
           <button className={tab === "summon" ? "active" : ""} onClick={() => setTab("summon")}>✦ Wish Pond</button>
         </nav>
         <div className="currency"><span>🌸</span><b>{petals}</b><small>petals</small></div>
+        <button className="settingsButton" onClick={openSettings} aria-label="Open settings and pause game">⚙</button>
       </header>
 
       {saveLoaded && !starterId && <div className="choiceOverlay starterOverlay" role="dialog" aria-modal="true" aria-labelledby="starter-title">
@@ -239,19 +286,23 @@ export default function Home() {
               </button>;
             })}
             {enemies.map(e => { const p = PATH[Math.min(PATH.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy pos-${p}`}><span>{e.icon}</span><i><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
+            {attackFx.map(fx => {
+              const from = cellPoint(fx.from); const to = cellPoint(fx.to);
+              return <i key={fx.id} className={`attackFx fx-${fx.critterId}`} style={{"--from-x":`${from.x}%`,"--from-y":`${from.y}%`,"--to-x":`${to.x}%`,"--to-y":`${to.y}%`,"--fx-color":fx.color} as React.CSSProperties}><b/></i>;
+            })}
           </div>
 
           <aside className="sidePanel">
             <div className="guide"><span>🐭</span><p>{message}</p></div>
             <div className="rosterTitle"><b>Your guardians</b><small>Select one to place</small></div>
             <div className="roster">
-              {ownedCritters.map(c => <button key={c.id} className={selected === c.id ? "selected" : ""} onClick={() => setSelected(c.id)}>
+              {runCritters.map(c => <button key={c.id} className={selected === c.id ? "selected" : ""} onClick={() => setSelected(c.id)}>
                 <span className="portrait" style={{background: c.color}}>{c.icon}</span><span><b>{c.name}</b><small>{c.title}</small></span><em>🔥 {c.cost}</em>
               </button>)}
             </div>
             <div className="selectedInfo"><span style={{background:selectedCritter.color}}>{selectedCritter.icon}</span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range}</small></div></div>
             {wave > 0 && wave < 5 && <div className="waveCondition"><small>NEXT WAVE</small><b>{nextWaveNote}</b></div>}
-            {lives > 0 ? <button className="primary" disabled={running || wave >= 5 || eventOpen || !starterId} onClick={startWave}>{running ? "Wave in progress…" : eventOpen ? "Choose a forest event" : wave >= 5 ? "Meadow protected!" : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Try the meadow again</button>}
+            {lives > 0 ? <button className="primary" disabled={running || wave >= 5 || eventOpen || recruitChoices.length > 0 || !starterId} onClick={startWave}>{running ? paused ? "Battle paused" : "Wave in progress…" : recruitChoices.length ? "Recruit a guardian" : eventOpen ? "Choose a forest event" : wave >= 5 ? "Meadow protected!" : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Try the meadow again</button>}
             {wave > 0 && !running && <button className="textButton" onClick={resetBattle}>Restart adventure</button>}
           </aside>
         </div>
@@ -267,7 +318,32 @@ export default function Home() {
             </div>
           </section>
         </div>}
+        {recruitChoices.length > 0 && <div className="choiceOverlay recruitOverlay" role="dialog" aria-modal="true" aria-labelledby="recruit-title">
+          <section className="choicePanel recruitPanel">
+            <span className="eventIcon">✨</span><span className="eyebrow">A CALL FROM THE WILD</span>
+            <h1 id="recruit-title">A guardian offers to join this run</h1>
+            <p>Choose one companion. They will remain in your battle roster until this adventure ends.</p>
+            <div className="starterChoices recruitChoices">
+              {recruitChoices.map(c => <button key={c.id} onClick={() => recruitGuardian(c.id)} style={{"--accent":c.color} as React.CSSProperties}>
+                <span className="starterPortrait">{c.icon}</span><small>{c.rarity} • COST {c.cost}</small><b>{c.name}</b><em>{c.skill}</em><strong>Recruit for this run</strong>
+              </button>)}
+            </div>
+          </section>
+        </div>}
       </section>}
+
+      {settingsOpen && <div className="choiceOverlay settingsOverlay" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <section className="choicePanel settingsPanel">
+          <span className="settingsCog">⚙</span><span className="eyebrow">GAME PAUSED</span>
+          <h1 id="settings-title">Meadow settings</h1>
+          <p>The gloomlings will wait until you return.</p>
+          <div className="settingsActions">
+            <button className="primary" onClick={closeSettings}>{running ? "Resume battle" : "Return to game"}</button>
+            <button className="restartButton" onClick={resetBattle}>Restart this adventure</button>
+          </div>
+          <small>Restarting keeps your chosen starter and permanent Critterbook collection.</small>
+        </section>
+      </div>}
 
       {tab === "collection" && <section className="bookPage">
         <div className="pageHeading"><span className="eyebrow">YOUR LIVING COLLECTION</span><h1>The Critterbook</h1><p>Every friendship adds a new leaf to the Heart Tree.</p></div>
