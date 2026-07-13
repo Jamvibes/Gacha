@@ -12,6 +12,8 @@ type Tower = { slot: number; critter: Critter; cooldown: number };
 type EventChoice = "harvest" | "spring" | "warden";
 type BossReward = "heartseed" | "embercore" | "starcharm";
 type AttackFx = { id: number; from: number; to: number; color: string; critterId: string };
+type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal" };
+type StarterStats = { runs: number; victories: number; bossesDefeated: number; wavesCleared: number; highestChapter: number };
 type ChapterConfig = { number: number; region: string; title: string; theme: string; path: number[]; slots: number[]; bossName: string; bossIcon: string; goalIcon: string; goalName: string };
 
 const CRITTERS: Critter[] = [
@@ -25,6 +27,7 @@ const CRITTERS: Critter[] = [
 
 const BOARD_SIZE = 8;
 const WAVES_PER_CHAPTER = 10;
+const emptyStarterStats = (): Record<string, StarterStats> => Object.fromEntries(CRITTERS.slice(0, 3).map(c => [c.id, { runs: 0, victories: 0, bossesDefeated: 0, wavesCleared: 0, highestChapter: 0 }]));
 const CHAPTERS: ChapterConfig[] = [
   {
     number: 1, region: "Sundew Meadow", title: "Whispers in the Clover", theme: "chapter-one",
@@ -52,7 +55,7 @@ const cellStyle = (cell: number) => {
 };
 
 export default function Home() {
-  const [tab, setTab] = useState<"battle" | "collection" | "summon">("battle");
+  const [tab, setTab] = useState<"battle" | "collection" | "statistics" | "summon">("battle");
   const [owned, setOwned] = useState<string[]>([]);
   const [petals, setPetals] = useState(240);
   const [energy, setEnergy] = useState(120);
@@ -76,8 +79,13 @@ export default function Home() {
   const [attackFx, setAttackFx] = useState<AttackFx[]>([]);
   const [bossRewardOpen, setBossRewardOpen] = useState(false);
   const [adventureComplete, setAdventureComplete] = useState(false);
+  const [gameSpeed, setGameSpeed] = useState<1 | 2>(1);
+  const [inspectedTowerSlot, setInspectedTowerSlot] = useState<number | null>(null);
+  const [combatNumbers, setCombatNumbers] = useState<CombatNumber[]>([]);
+  const [stats, setStats] = useState<Record<string, StarterStats>>(emptyStarterStats);
   const enemyId = useRef(1);
   const attackId = useRef(1);
+  const combatNumberId = useRef(1);
   const spawnQueue = useRef(0);
   const spawnTimer = useRef(0);
   const waveHpMultiplier = useRef(1);
@@ -95,6 +103,7 @@ export default function Home() {
         const data = JSON.parse(saved);
         setOwned(data.owned || owned);
         setPetals(data.petals ?? petals);
+        if (data.stats) setStats({ ...emptyStarterStats(), ...data.stats });
         setStarterId(data.starterId || null);
         if (data.starterId) {
           setSelected(data.starterId);
@@ -106,8 +115,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (saveLoaded) localStorage.setItem("critter-keepers-save", JSON.stringify({ owned, petals, starterId }));
-  }, [owned, petals, starterId, saveLoaded]);
+    if (saveLoaded) localStorage.setItem("critter-keepers-save", JSON.stringify({ owned, petals, starterId, stats }));
+  }, [owned, petals, starterId, stats, saveLoaded]);
 
   useEffect(() => {
     if (!running || paused) return;
@@ -143,11 +152,13 @@ export default function Home() {
           const target = targets.sort((a,b) => b.step - a.step)[0];
           if (target) {
             const starterBoost = starterId === "mossback" ? 1.15 : 1;
-            target.hp -= Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current);
+            const damage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current);
+            const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(target.step))];
+            target.hp -= damage;
             fired.push(t.slot);
             const fxId = attackId.current++;
-            const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(target.step))];
             setAttackFx(fx => [...fx, { id: fxId, from: slotCell, to: targetCell, color: t.critter.color, critterId: t.critter.id }]);
+            addCombatNumber(targetCell, damage, "damage");
             window.setTimeout(() => setAttackFx(fx => fx.filter(item => item.id !== fxId)), 520);
           }
         });
@@ -157,9 +168,9 @@ export default function Home() {
         return next.filter(e => e.hp > 0);
       });
       setEnergy(v => Math.min(200, v + 1));
-    }, 280);
+    }, 280 / gameSpeed);
     return () => clearInterval(timer);
-  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, activeSlots]);
+  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, activeSlots, gameSpeed]);
 
   useEffect(() => {
     if (running && spawnQueue.current === 0 && enemies.length === 0) {
@@ -168,6 +179,7 @@ export default function Home() {
       setRunning(false);
       setPetals(p => p + reward);
       setMessage(bossCleared ? `${activeChapter.bossName} was defeated! Choose a relic before the journey continues.` : `Wave ${wave} cleared! Your critters found ${reward} petals.`);
+      if (starterId) setStats(current => ({ ...current, [starterId]: { ...current[starterId], wavesCleared: current[starterId].wavesCleared + 1, bossesDefeated: current[starterId].bossesDefeated + (bossCleared ? 1 : 0), highestChapter: Math.max(current[starterId].highestChapter, chapter) } }));
       wavePetalBonus.current = 0;
       if (bossCleared) {
         setBossRewardOpen(true);
@@ -195,6 +207,14 @@ export default function Home() {
   const ownedCritters = useMemo(() => CRITTERS.filter(c => owned.includes(c.id)), [owned]);
   const runCritters = useMemo(() => CRITTERS.filter(c => runUnlocked.includes(c.id)), [runUnlocked]);
   const starterCritter = CRITTERS.find(c => c.id === starterId);
+  const inspectedTower = inspectedTowerSlot === null ? null : towers.find(t => t.slot === inspectedTowerSlot) || null;
+  const statTotals = Object.values(stats).reduce((total, item) => ({ runs: total.runs + item.runs, victories: total.victories + item.victories, bosses: total.bosses + item.bossesDefeated, waves: total.waves + item.wavesCleared }), { runs: 0, victories: 0, bosses: 0, waves: 0 });
+
+  function addCombatNumber(cell: number, value: number, kind: "damage" | "heal") {
+    const id = combatNumberId.current++;
+    setCombatNumbers(current => [...current, { id, cell, value, kind }]);
+    window.setTimeout(() => setCombatNumbers(current => current.filter(number => number.id !== id)), 850);
+  }
 
   function chooseStarter(id: string) {
     const critter = CRITTERS.find(c => c.id === id)!;
@@ -204,6 +224,7 @@ export default function Home() {
     setOwned(current => current.includes(id) ? current : [...current, id]);
     setEnergy(id === "emberfox" ? 150 : 120);
     setLives(id === "bubblefin" ? 13 : 10);
+    setStats(current => ({ ...current, [id]: { ...current[id], runs: current[id].runs + 1, highestChapter: Math.max(1, current[id].highestChapter) } }));
     setMessage(`${critter.name} has chosen you. Place your first guardian when you are ready!`);
   }
 
@@ -226,6 +247,11 @@ export default function Home() {
     setPaused(false);
   }
 
+  function closeTowerInfo() {
+    setInspectedTowerSlot(null);
+    setPaused(false);
+  }
+
   function chooseEvent(choice: EventChoice) {
     if (choice === "harvest") {
       setPetals(p => p + 55);
@@ -243,6 +269,7 @@ export default function Home() {
       setMessage("The spring restores your guardians' ember energy.");
     } else {
       setLives(l => Math.min(15, l + 2));
+      addCombatNumber(activePath[activePath.length - 1], 2, "heal");
       waveHpMultiplier.current = 1;
       waveExtraEnemies.current = 3;
       wavePetalBonus.current = 20;
@@ -255,6 +282,7 @@ export default function Home() {
   function chooseBossReward(reward: BossReward) {
     if (reward === "heartseed") {
       setLives(l => Math.min(20, l + 5));
+      addCombatNumber(activePath[activePath.length - 1], 5, "heal");
       setMessage("The Ancient Heartseed strengthens your objective with 5 health.");
     } else if (reward === "embercore") {
       setEnergy(e => Math.min(250, e + 100));
@@ -268,6 +296,7 @@ export default function Home() {
 
     if (chapter < CHAPTERS.length) {
       const nextChapter = CHAPTERS[chapter];
+      if (starterId) setStats(current => ({ ...current, [starterId]: { ...current[starterId], highestChapter: Math.max(current[starterId].highestChapter, chapter + 1) } }));
       setChapter(c => c + 1);
       setWave(0);
       setEnemies([]);
@@ -283,6 +312,7 @@ export default function Home() {
       window.setTimeout(() => setMessage(`Chapter ${nextChapter.number}: ${nextChapter.region}. Place your guardians for the road ahead!`), 0);
     } else {
       setAdventureComplete(true);
+      if (starterId) setStats(current => ({ ...current, [starterId]: { ...current[starterId], victories: current[starterId].victories + 1 } }));
       setMessage("All three regions are safe. The Critter Keepers completed their adventure!");
     }
   }
@@ -298,7 +328,7 @@ export default function Home() {
   }
 
   function placeTower(slot: number) {
-    if (towers.some(t => t.slot === slot)) { setMessage("That meadow stone already has a guardian."); return; }
+    if (towers.some(t => t.slot === slot)) { setInspectedTowerSlot(slot); setPaused(true); return; }
     if (energy < selectedCritter.cost) { setMessage(`Ember energy is too low. ${selectedCritter.name} needs ${selectedCritter.cost}.`); return; }
     setEnergy(v => v - selectedCritter.cost); setTowers(ts => [...ts, { slot, critter: selectedCritter, cooldown: 0 }]); setMessage(`${selectedCritter.name} is ready to defend!`);
   }
@@ -307,7 +337,7 @@ export default function Home() {
     setEnemies([]); setTowers([]); setWave(0); setChapter(1);
     setLives(10);
     setEnergy(120);
-    setRunning(false); setPaused(false); setSettingsOpen(false); setEventOpen(false); setRecruitChoices([]); setAttackFx([]); setBossRewardOpen(false); setAdventureComplete(false); setNextWaveNote("No special conditions");
+    setRunning(false); setPaused(false); setSettingsOpen(false); setEventOpen(false); setRecruitChoices([]); setAttackFx([]); setCombatNumbers([]); setInspectedTowerSlot(null); setBossRewardOpen(false); setAdventureComplete(false); setNextWaveNote("No special conditions");
     setStarterId(null);
     setRunUnlocked([]);
     setSelected("emberfox");
@@ -332,6 +362,7 @@ export default function Home() {
         <nav aria-label="Game sections">
           <button className={tab === "battle" ? "active" : ""} onClick={() => setTab("battle")}>⚔ Meadow</button>
           <button className={tab === "collection" ? "active" : ""} onClick={() => setTab("collection")}>☘ Critterbook</button>
+          <button className={tab === "statistics" ? "active" : ""} onClick={() => setTab("statistics")}>▥ Statistics</button>
           <button className={tab === "summon" ? "active" : ""} onClick={() => setTab("summon")}>✦ Wish Pond</button>
         </nav>
         <div className="currency"><span>🌸</span><b>{petals}</b><small>petals</small></div>
@@ -356,7 +387,7 @@ export default function Home() {
       </div>}
 
       {tab === "battle" && <section className="battlePage">
-        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterId === "emberfox" ? "+30 starting energy" : starterId === "bubblefin" ? "+3 Heart Tree health" : "+15% guardian damage"}</small></div>}</div><div className="battleStats"><span>❤️ <b>{lives}</b></span><span>🔥 <b>{energy}</b></span><span>🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span></div></div>
+        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterId === "emberfox" ? "+30 starting energy" : starterId === "bubblefin" ? "+3 Heart Tree health" : "+15% guardian damage"}</small></div>}</div><div className="battleStats"><span>❤️ <b>{lives}</b></span><span>🔥 <b>{energy}</b></span><span>🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span><button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
         <div className="gameShell">
           <div className={`field ${activeChapter.theme}`} aria-label={`${activeChapter.region} tower defence battlefield`}>
             <div className="sun"/><div className="cloud cloudOne">☁</div><div className="cloud cloudTwo">☁</div>
@@ -378,6 +409,7 @@ export default function Home() {
               const from = cellPoint(fx.from); const to = cellPoint(fx.to);
               return <i key={fx.id} className={`attackFx fx-${fx.critterId}`} style={{"--from-x":`${from.x}%`,"--from-y":`${from.y}%`,"--to-x":`${to.x}%`,"--to-y":`${to.y}%`,"--fx-color":fx.color} as React.CSSProperties}><b/></i>;
             })}
+            {combatNumbers.map(number => <b key={number.id} className={`combatNumber ${number.kind}`} style={cellStyle(number.cell)}>{number.kind === "heal" ? "+" : "−"}{number.value}</b>)}
           </div>
 
           <aside className="sidePanel">
@@ -430,6 +462,21 @@ export default function Home() {
             </div>
           </section>
         </div>}
+        {inspectedTower && <div className="choiceOverlay towerInfoOverlay" role="dialog" aria-modal="true" aria-labelledby="tower-info-title">
+          <section className="choicePanel towerInfoPanel" style={{"--accent": inspectedTower.critter.color} as React.CSSProperties}>
+            <button className="closeInfo" onClick={closeTowerInfo} aria-label="Close tower information">×</button>
+            <span className="towerInfoPortrait">{inspectedTower.critter.icon}</span><span className="eyebrow">PLACED GUARDIAN • {inspectedTower.critter.rarity}</span>
+            <h1 id="tower-info-title">{inspectedTower.critter.name}</h1>
+            <p>{inspectedTower.critter.title}</p>
+            <div className="towerStatsGrid">
+              <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * (starterId === "mossback" ? 1.15 : 1) * runDamageMultiplier.current)}</b></span>
+              <span><small>RANGE</small><b>{inspectedTower.critter.range} tiles</b></span>
+              <span><small>ATTACK TEMPO</small><b>{inspectedTower.critter.speed <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
+            </div>
+            <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>
+            <button className="primary" onClick={closeTowerInfo}>Return to battle</button>
+          </section>
+        </div>}
       </section>}
 
       {settingsOpen && <div className="choiceOverlay settingsOverlay" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -451,6 +498,22 @@ export default function Home() {
         <div className="cards">{CRITTERS.map((c, i) => { const unlocked = owned.includes(c.id); return <article key={c.id} className={!unlocked ? "locked" : ""} style={{"--accent": c.color} as React.CSSProperties}>
           <div className="cardTop"><small>NO. 00{i+1}</small><span>{c.rarity}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips"><span>⚔ {c.damage}</span><span>◎ {c.range}</span><span>🔥 {c.cost}</span></div>}
         </article>; })}</div>
+      </section>}
+
+      {tab === "statistics" && <section className="bookPage statsPage">
+        <div className="pageHeading"><span className="eyebrow">YOUR ADVENTURE RECORD</span><h1>Keeper Statistics</h1><p>Run history is saved with your Critterbook on this device.</p></div>
+        <div className="statSummary">
+          <article><span>🧭</span><b>{statTotals.runs}</b><small>Runs started</small></article>
+          <article><span>🏆</span><b>{statTotals.victories}</b><small>Full victories</small></article>
+          <article><span>👑</span><b>{statTotals.bosses}</b><small>Bosses defeated</small></article>
+          <article><span>🌙</span><b>{statTotals.waves}</b><small>Waves cleared</small></article>
+        </div>
+        <div className="starterRecords">
+          {CRITTERS.slice(0, 3).map(critter => { const record = stats[critter.id]; const winRate = record.runs ? Math.round(record.victories / record.runs * 100) : 0; return <article key={critter.id} style={{"--accent": critter.color} as React.CSSProperties}>
+            <div className="recordGuardian"><span style={{background:critter.color}}>{critter.icon}</span><div><small>STARTING GUARDIAN</small><h2>{critter.name}</h2><p>{critter.title}</p></div></div>
+            <div className="recordNumbers"><span><b>{record.runs}</b><small>Runs</small></span><span><b>{record.victories}</b><small>Victories</small></span><span><b>{winRate}%</b><small>Win rate</small></span><span><b>{record.highestChapter || "—"}</b><small>Best chapter</small></span><span><b>{record.bossesDefeated}</b><small>Bosses</small></span><span><b>{record.wavesCleared}</b><small>Waves</small></span></div>
+          </article>; })}
+        </div>
       </section>}
 
       {tab === "summon" && <section className="summonPage">
