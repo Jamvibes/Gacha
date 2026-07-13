@@ -5,9 +5,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type Critter = {
   id: string; name: string; title: string; icon: string; color: string;
   cost: number; damage: number; speed: number; range: number; rarity: string; skill: string;
+  ability: "burn" | "pierce" | "slow" | "chain" | "splash" | "beam";
+  wishOnly?: boolean; upgradeOf?: string;
 };
 
-type Enemy = { id: number; step: number; hp: number; maxHp: number; kind: string; icon: string; boss?: boolean };
+type Enemy = { id: number; step: number; hp: number; maxHp: number; kind: string; icon: string; boss?: boolean; burnTicks?: number; burnDamage?: number; slowTicks?: number; slowFactor?: number };
 type Tower = { slot: number; critter: Critter; cooldown: number; level: number };
 type EventChoice = "harvest" | "spring" | "warden";
 type BossReward = "heartseed" | "embercore" | "starcharm";
@@ -17,12 +19,15 @@ type StarterStats = { runs: number; victories: number; bossesDefeated: number; w
 type ChapterConfig = { number: number; region: string; title: string; theme: string; path: number[]; slots: number[]; bossName: string; bossIcon: string; goalIcon: string; goalName: string };
 
 const CRITTERS: Critter[] = [
-  { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", skill: "Fast little fireballs" },
-  { id: "bubblefin", name: "Bubblefin", title: "Puddle Pal", icon: "🐟", color: "#54bde8", cost: 55, damage: 12, speed: 3, range: 3, rarity: "Common", skill: "Long-range bubbles" },
-  { id: "mossback", name: "Mossback", title: "Gentle Guard", icon: "🐢", color: "#6fc174", cost: 65, damage: 32, speed: 5, range: 1, rarity: "Rare", skill: "Heavy seed bursts" },
-  { id: "sparkit", name: "Sparkit", title: "Storm Kitten", icon: "🐱", color: "#f5c84b", cost: 75, damage: 23, speed: 3, range: 2, rarity: "Rare", skill: "Crackling chain bolts" },
-  { id: "bloomwing", name: "Bloomwing", title: "Garden Sprite", icon: "🦋", color: "#e982b5", cost: 80, damage: 28, speed: 3, range: 3, rarity: "Epic", skill: "Petal storm" },
-  { id: "moonowl", name: "Moonowl", title: "Star Watcher", icon: "🦉", color: "#9b88e8", cost: 95, damage: 48, speed: 5, range: 4, rarity: "Epic", skill: "Piercing moonbeam" },
+  { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", ability: "burn", skill: "Kindle: burns its target for 20% damage over 3 ticks." },
+  { id: "bubblefin", name: "Bubblefin", title: "Puddle Pal", icon: "🐟", color: "#54bde8", cost: 55, damage: 12, speed: 3, range: 3, rarity: "Common", ability: "pierce", skill: "Bubble Lance: pierces the target and 2 enemies behind it." },
+  { id: "mossback", name: "Mossback", title: "Gentle Guard", icon: "🐢", color: "#6fc174", cost: 65, damage: 32, speed: 5, range: 1, rarity: "Rare", ability: "slow", skill: "Root Slam: slows its target by 45% for 4 ticks." },
+  { id: "sparkit", name: "Sparkit", title: "Storm Kitten", icon: "🐱", color: "#f5c84b", cost: 75, damage: 23, speed: 3, range: 2, rarity: "Rare", ability: "chain", skill: "Chain Spark: arcs to 2 additional enemies in range." },
+  { id: "bloomwing", name: "Bloomwing", title: "Garden Sprite", icon: "🦋", color: "#e982b5", cost: 80, damage: 28, speed: 3, range: 3, rarity: "Epic", ability: "splash", skill: "Petal Burst: damages enemies clustered around its target." },
+  { id: "moonowl", name: "Moonowl", title: "Star Watcher", icon: "🦉", color: "#9b88e8", cost: 95, damage: 48, speed: 5, range: 4, rarity: "Epic", ability: "beam", skill: "Moonbeam: pierces up to 4 enemies with fading damage." },
+  { id: "embermane", name: "Embermane", title: "Wildfire Heir", icon: "🐺", color: "#f04f45", cost: 105, damage: 34, speed: 2, range: 3, rarity: "Legendary", ability: "burn", skill: "Wildfire: burns for 30% damage over 5 ticks.", wishOnly: true, upgradeOf: "emberfox" },
+  { id: "tidecaller", name: "Tidecaller", title: "Ocean Oracle", icon: "🐬", color: "#279fd1", cost: 110, damage: 24, speed: 2, range: 4, rarity: "Legendary", ability: "pierce", skill: "Tidal Lance: pierces the target and 3 enemies behind it.", wishOnly: true, upgradeOf: "bubblefin" },
+  { id: "eldermoss", name: "Eldermoss", title: "Ancient Grove", icon: "🦕", color: "#438f58", cost: 120, damage: 58, speed: 4, range: 2, rarity: "Legendary", ability: "slow", skill: "Worldroot Slam: slows its target by 60% for 6 ticks.", wishOnly: true, upgradeOf: "mossback" },
 ];
 
 const BOARD_SIZE = 8;
@@ -138,34 +143,64 @@ export default function Home() {
 
       setTowers(ts => ts.map(t => ({ ...t, cooldown: Math.max(0, t.cooldown - 1) })));
       setEnemies(current => {
-        let next = current.map(e => ({ ...e, step: e.step + 0.14 }));
-        const escaped = next.filter(e => e.step >= activePath.length - 1);
+        let next = current.map(e => {
+          const burning = (e.burnTicks || 0) > 0;
+          const burnDamage = burning ? e.burnDamage || 0 : 0;
+          const currentCell = activePath[Math.min(activePath.length - 1, Math.floor(e.step))];
+          if (burnDamage) addCombatNumber(currentCell, burnDamage, "damage");
+          return { ...e, hp: e.hp - burnDamage, burnTicks: Math.max(0, (e.burnTicks || 0) - 1), step: e.step + 0.14 * ((e.slowTicks || 0) > 0 ? 1 - (e.slowFactor || 0.45) : 1), slowTicks: Math.max(0, (e.slowTicks || 0) - 1) };
+        });
+        const escaped = next.filter(e => e.hp > 0 && e.step >= activePath.length - 1);
         if (escaped.length) setLives(v => Math.max(0, v - escaped.length));
-        next = next.filter(e => e.step < activePath.length - 1);
+        next = next.filter(e => e.hp <= 0 || e.step < activePath.length - 1);
 
         const readyTowers = towers.filter(t => t.cooldown <= 0);
         const fired: number[] = [];
         readyTowers.forEach(t => {
           const slotCell = activeSlots[t.slot];
-          const targets = next.filter(e => {
+          const targets = next.filter(e => e.hp > 0 && (() => {
             const targetCell = activePath[Math.floor(e.step)];
             const columnGap = targetCell % BOARD_SIZE - slotCell % BOARD_SIZE;
             const rowGap = Math.floor(targetCell / BOARD_SIZE) - Math.floor(slotCell / BOARD_SIZE);
             const upgradedRange = t.critter.range + (t.level >= 3 ? 1 : 0);
             return Math.hypot(columnGap, rowGap) <= upgradedRange + 0.65;
-          });
-          const target = targets.sort((a,b) => b.step - a.step)[0];
+          })());
+          const sortedTargets = targets.sort((a,b) => b.step - a.step);
+          const target = sortedTargets[0];
           if (target) {
             const starterBoost = starterId === "mossback" ? 1.15 : 1;
             const upgradeMultiplier = 1 + (t.level - 1) * 0.35;
-            const damage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current * upgradeMultiplier);
-            const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(target.step))];
-            target.hp -= damage;
+            const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current * upgradeMultiplier);
+            let hits: { enemy: Enemy; multiplier: number }[] = [{ enemy: target, multiplier: 1 }];
+            if (t.critter.ability === "pierce") {
+              const limit = t.critter.id === "tidecaller" ? 4 : 3;
+              hits = sortedTargets.slice(0, limit).map((enemy, index) => ({ enemy, multiplier: Math.max(0.45, 1 - index * 0.2) }));
+            } else if (t.critter.ability === "chain") {
+              hits = sortedTargets.slice(0, 3).map((enemy, index) => ({ enemy, multiplier: index ? 0.65 : 1 }));
+            } else if (t.critter.ability === "splash") {
+              hits = sortedTargets.filter(enemy => Math.abs(enemy.step - target.step) <= 1.6).slice(0, 5).map((enemy, index) => ({ enemy, multiplier: index ? 0.7 : 1 }));
+            } else if (t.critter.ability === "beam") {
+              hits = sortedTargets.slice(0, 4).map((enemy, index) => ({ enemy, multiplier: 1 - index * 0.18 }));
+            }
+            if (t.critter.ability === "burn") {
+              target.burnTicks = Math.max(target.burnTicks || 0, t.critter.id === "embermane" ? 5 : 3);
+              target.burnDamage = Math.max(target.burnDamage || 0, Math.round(baseDamage * (t.critter.id === "embermane" ? 0.3 : 0.2)));
+            } else if (t.critter.ability === "slow") {
+              target.slowTicks = Math.max(target.slowTicks || 0, t.critter.id === "eldermoss" ? 6 : 4);
+              target.slowFactor = Math.max(target.slowFactor || 0, t.critter.id === "eldermoss" ? 0.6 : 0.45);
+            }
             fired.push(t.slot);
-            const fxId = attackId.current++;
-            setAttackFx(fx => [...fx, { id: fxId, from: slotCell, to: targetCell, color: t.critter.color, critterId: t.critter.id }]);
-            addCombatNumber(targetCell, damage, "damage");
-            window.setTimeout(() => setAttackFx(fx => fx.filter(item => item.id !== fxId)), 520);
+            const newEffects: AttackFx[] = [];
+            hits.forEach(hit => {
+              const damage = Math.round(baseDamage * hit.multiplier);
+              const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(hit.enemy.step))];
+              hit.enemy.hp -= damage;
+              const fxId = attackId.current++;
+              newEffects.push({ id: fxId, from: slotCell, to: targetCell, color: t.critter.color, critterId: t.critter.id });
+              addCombatNumber(targetCell, damage, "damage");
+              window.setTimeout(() => setAttackFx(fx => fx.filter(item => item.id !== fxId)), 520);
+            });
+            setAttackFx(fx => [...fx, ...newEffects]);
           }
         });
         if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: t.critter.speed } : t));
@@ -191,7 +226,7 @@ export default function Home() {
         setBossRewardOpen(true);
       } else if (wave < WAVES_PER_CHAPTER) {
         if ([1, 3, 6].includes(wave)) {
-          const available = CRITTERS.filter(c => !runUnlocked.includes(c.id));
+          const available = CRITTERS.filter(c => !runUnlocked.includes(c.id) && (!c.wishOnly || owned.includes(c.id)));
           if (available.length) {
             const offset = wave === 3 && available.length > 3 ? 1 : 0;
             setRecruitChoices([...available.slice(offset, offset + 3), ...available.slice(0, offset)].slice(0, 3));
@@ -203,7 +238,7 @@ export default function Home() {
         }
       }
     }
-  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, eventBuffs.harvest, starterId]);
+  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, eventBuffs.harvest, starterId, owned]);
 
   useEffect(() => {
     if (lives <= 0) { setRunning(false); spawnQueue.current = 0; setMessage("The gloom reached the Heart Tree. Regroup and try again!"); }
@@ -227,10 +262,10 @@ export default function Home() {
         ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), ability: "Barkhide: 55 additional health." }] : []),
       ];
   const activeBuffs = [
-    eventBuffs.harvest ? { icon: "🌸", name: `Petal Instinct ×${eventBuffs.harvest}`, description: `+${eventBuffs.harvest * 5} petals after every wave` } : null,
-    eventBuffs.spring ? { icon: "💧", name: `Deep Spring ×${eventBuffs.spring}`, description: `+${eventBuffs.spring * 10} maximum energy` } : null,
-    eventBuffs.warden ? { icon: "🌳", name: `Rootstrength ×${eventBuffs.warden}`, description: `+${eventBuffs.warden * 5}% guardian damage` } : null,
-    starCharmCount ? { icon: "⭐", name: `Star Charm ×${starCharmCount}`, description: `+${starCharmCount * 25}% guardian damage` } : null,
+    eventBuffs.harvest ? { icon: "🌸", name: `Moonbloom Covenant ×${eventBuffs.harvest}`, description: `+${eventBuffs.harvest * 5} petals after every wave` } : null,
+    eventBuffs.spring ? { icon: "💧", name: `Everflowing Spring ×${eventBuffs.spring}`, description: `+${eventBuffs.spring * 10} maximum energy` } : null,
+    eventBuffs.warden ? { icon: "🌳", name: `Oath of the Deep Roots ×${eventBuffs.warden}`, description: `+${eventBuffs.warden * 5}% guardian damage` } : null,
+    starCharmCount ? { icon: "⭐", name: `Astral Guardian's Grace ×${starCharmCount}`, description: `+${starCharmCount * 25}% guardian damage` } : null,
   ].filter(Boolean) as { icon: string; name: string; description: string }[];
 
   function addCombatNumber(cell: number, value: number, kind: "damage" | "heal") {
@@ -285,7 +320,7 @@ export default function Home() {
       waveExtraEnemies.current = 0;
       wavePetalBonus.current = 25;
       setNextWaveNote("Gloomblessing: enemies have 35% more health • +25 clear reward");
-      setMessage("You gathered moonpetals and 2 Dewshards. Petal Instinct now adds 5 petals to every clear reward.");
+      setMessage("The Moonbloom Covenant blesses this run with 5 extra petals per clear.");
     } else if (choice === "spring") {
       setMaxEnergy(cap => cap + 10);
       setEnergy(e => Math.min(maxEnergy + 10, e + 50));
@@ -295,7 +330,7 @@ export default function Home() {
       waveExtraEnemies.current = 0;
       wavePetalBonus.current = 0;
       setNextWaveNote("Springwater: +50 ember energy • normal enemy strength");
-      setMessage("The spring restores energy, reveals 1 Dewshard, and permanently raises this run's energy capacity by 10.");
+      setMessage("The Everflowing Spring blesses this run with 10 additional maximum energy.");
     } else {
       setLives(l => Math.min(20, l + 2));
       addCombatNumber(activePath[activePath.length - 1], 2, "heal");
@@ -306,7 +341,7 @@ export default function Home() {
       waveExtraEnemies.current = 3;
       wavePetalBonus.current = 20;
       setNextWaveNote("Root pact: +2 Heart Tree health • 3 extra enemies • +20 clear reward");
-      setMessage("The roots heal your objective, uncover 1 Dewshard, and permanently grant guardians 5% damage this run.");
+      setMessage("The Oath of the Deep Roots blesses every guardian with 5% additional damage.");
     }
     setEventOpen(false);
   }
@@ -323,7 +358,7 @@ export default function Home() {
     } else {
       runDamageMultiplier.current *= 1.25;
       setStarCharmCount(count => count + 1);
-      setMessage("The Star Charm grants every guardian 25% more damage for this run.");
+      setMessage("Astral Guardian's Grace grants every guardian 25% more damage for this run.");
     }
     setPetals(p => p + (chapter === CHAPTERS.length ? 150 : 75));
     setBossRewardOpen(false);
@@ -394,8 +429,9 @@ export default function Home() {
   function summon() {
     if (petals < 100) { setMessage("You need 100 petals for a new friendship."); return; }
     setPetals(p => p - 100);
-    const locked = CRITTERS.filter(c => !owned.includes(c.id));
-    const pool = locked.length ? [...locked, ...CRITTERS.slice(0,3)] : CRITTERS;
+    const roll = Math.random();
+    const rarity = roll < 0.1 ? "Legendary" : roll < 0.25 ? "Epic" : roll < 0.5 ? "Rare" : "Common";
+    const pool = CRITTERS.filter(c => c.rarity === rarity);
     const pick = pool[Math.floor(Math.random() * pool.length)];
     setSummoned(pick);
     if (!owned.includes(pick.id)) setOwned(o => [...o, pick.id]); else setPetals(p => p + 35);
@@ -467,7 +503,7 @@ export default function Home() {
               </button>)}
             </div>
             <div className="selectedInfo"><span style={{background:selectedCritter.color}}>{selectedCritter.icon}</span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range}</small></div></div>
-            <div className="buffPanel"><div className="buffTitle"><b>Run buffs</b><small>Last until this run ends</small></div>{activeBuffs.length ? <div className="buffList">{activeBuffs.map(buff => <span key={buff.name}><i>{buff.icon}</i><b>{buff.name}</b><small>{buff.description}</small></span>)}</div> : <p>No permanent run buffs yet. Event decisions can grant them.</p>}</div>
+            <div className="buffPanel"><div className="buffTitle"><b>Run Blessings</b><small>Last until this run ends</small></div>{activeBuffs.length ? <div className="buffList">{activeBuffs.map(blessing => <span key={blessing.name}><i>{blessing.icon}</i><b>{blessing.name}</b><small>{blessing.description}</small></span>)}</div> : <p>No Blessings yet. Event decisions and relics can grant them.</p>}</div>
             {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><span>{enemy.icon}</span><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP each</small><p>{enemy.ability}</p></div></article>)}</div>}
             {wave > 0 && wave < WAVES_PER_CHAPTER && <div className={`waveCondition ${wave === WAVES_PER_CHAPTER - 1 ? "bossWarning" : ""}`}><small>{wave === WAVES_PER_CHAPTER - 1 ? "BOSS APPROACHING" : "NEXT WAVE"}</small><b>{wave === WAVES_PER_CHAPTER - 1 ? activeChapter.bossName : nextWaveNote}</b></div>}
             {lives > 0 ? <button className="primary" disabled={running || wave >= WAVES_PER_CHAPTER || eventOpen || recruitChoices.length > 0 || bossRewardOpen || adventureComplete || !starterId} onClick={startWave}>{running ? paused ? "Battle paused" : wave === WAVES_PER_CHAPTER ? "Boss battle in progress…" : "Wave in progress…" : recruitChoices.length ? "Recruit a guardian" : eventOpen ? "Choose a forest event" : bossRewardOpen ? "Choose your boss reward" : adventureComplete ? "Adventure complete!" : wave >= WAVES_PER_CHAPTER ? `${activeChapter.region} protected!` : wave === WAVES_PER_CHAPTER - 1 ? `Challenge ${activeChapter.bossName}` : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Choose a new starter</button>}
@@ -544,8 +580,8 @@ export default function Home() {
       {tab === "collection" && <section className="bookPage">
         <div className="pageHeading"><span className="eyebrow">YOUR LIVING COLLECTION</span><h1>The Critterbook</h1><p>Every friendship adds a new leaf to the Heart Tree.</p></div>
         <div className="progressCard"><div><span>✿</span><b>{owned.length} of {CRITTERS.length} discovered</b></div><div className="progress"><i style={{width:`${owned.length/CRITTERS.length*100}%`}}/></div></div>
-        <div className="cards">{CRITTERS.map((c, i) => { const unlocked = owned.includes(c.id); return <article key={c.id} className={!unlocked ? "locked" : ""} style={{"--accent": c.color} as React.CSSProperties}>
-          <div className="cardTop"><small>NO. 00{i+1}</small><span>{c.rarity}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips"><span>⚔ {c.damage}</span><span>◎ {c.range}</span><span>🔥 {c.cost}</span></div>}
+        <div className="cards">{CRITTERS.map((c, i) => { const unlocked = owned.includes(c.id); const baseCritter = c.upgradeOf ? CRITTERS.find(base => base.id === c.upgradeOf) : null; return <article key={c.id} className={!unlocked ? "locked" : ""} style={{"--accent": c.color} as React.CSSProperties}>
+          <div className="cardTop"><small>NO. 00{i+1}</small><span>{c.rarity}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.wishOnly ? "A rare evolution sleeps within the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ Evolves {baseCritter.name}</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span><span>🔥 {c.cost}</span></div>}
         </article>; })}</div>
       </section>}
 
@@ -566,8 +602,8 @@ export default function Home() {
       </section>}
 
       {tab === "summon" && <section className="summonPage">
-        <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><span>{summoned.icon}</span><small>{summoned.rarity} friend</small><h2>{summoned.name}</h2><p>{owned.filter(x => x === summoned.id).length ? summoned.skill : "A new page joined your Critterbook!"}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
-        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>Every wish reveals one critter. New friends join your Critterbook; duplicate friends return 35 petals.</p><div className="odds"><span>Common <b>55%</b></span><span>Rare <b>30%</b></span><span>Epic <b>15%</b></span></div><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
+        <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><span>{summoned.icon}</span><small>{summoned.rarity} friend</small><h2>{summoned.name}</h2><p>{summoned.upgradeOf ? `Wish Pond evolution • ${summoned.skill}` : summoned.skill}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
+        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>Every wish reveals one critter. Legendary wishes can reveal evolved guardians; once discovered, they may appear as recruits during future runs. Duplicates return 35 petals.</p><div className="odds"><span>Common <b>50%</b></span><span>Rare <b>25%</b></span><span>Epic <b>15%</b></span><span>Legendary <b>10%</b></span></div><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
       </section>}
       <footer><span>Prototype meadow • Progress saves on this device</span><span>Made with a little magic ✦</span></footer>
     </main>
