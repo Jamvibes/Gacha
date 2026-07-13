@@ -218,13 +218,14 @@ export default function Home() {
 
   function resetBattle() {
     setEnemies([]); setTowers([]); setWave(0);
-    setLives(starterId === "bubblefin" ? 13 : 10);
-    setEnergy(starterId === "emberfox" ? 150 : 120);
+    setLives(10);
+    setEnergy(120);
     setRunning(false); setPaused(false); setSettingsOpen(false); setEventOpen(false); setRecruitChoices([]); setAttackFx([]); setNextWaveNote("No special conditions");
-    setRunUnlocked(starterId ? [starterId] : []);
-    if (starterId) setSelected(starterId);
+    setStarterId(null);
+    setRunUnlocked([]);
+    setSelected("emberfox");
     spawnQueue.current = 0; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; wavePetalBonus.current = 0;
-    setMessage("A fresh adventure begins!");
+    setMessage("Choose a starter for your new adventure.");
   }
 
   function summon() {
@@ -263,7 +264,7 @@ export default function Home() {
               <strong>Choose {c.name}</strong>
             </button>)}
           </div>
-          <small className="choiceHint">Your friendship is saved on this device. You can begin a fresh adventure later.</small>
+          <small className="choiceHint">Your Critterbook is saved on this device. Every new adventure lets you choose a starter again.</small>
         </section>
       </div>}
 
@@ -302,8 +303,8 @@ export default function Home() {
             </div>
             <div className="selectedInfo"><span style={{background:selectedCritter.color}}>{selectedCritter.icon}</span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range}</small></div></div>
             {wave > 0 && wave < 5 && <div className="waveCondition"><small>NEXT WAVE</small><b>{nextWaveNote}</b></div>}
-            {lives > 0 ? <button className="primary" disabled={running || wave >= 5 || eventOpen || recruitChoices.length > 0 || !starterId} onClick={startWave}>{running ? paused ? "Battle paused" : "Wave in progress…" : recruitChoices.length ? "Recruit a guardian" : eventOpen ? "Choose a forest event" : wave >= 5 ? "Meadow protected!" : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Try the meadow again</button>}
-            {wave > 0 && !running && <button className="textButton" onClick={resetBattle}>Restart adventure</button>}
+            {lives > 0 ? <button className="primary" disabled={running || wave >= 5 || eventOpen || recruitChoices.length > 0 || !starterId} onClick={startWave}>{running ? paused ? "Battle paused" : "Wave in progress…" : recruitChoices.length ? "Recruit a guardian" : eventOpen ? "Choose a forest event" : wave >= 5 ? "Meadow protected!" : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Choose a new starter</button>}
+            {wave > 0 && !running && <button className="textButton" onClick={resetBattle}>Restart with a new starter</button>}
           </aside>
         </div>
         {eventOpen && <div className="choiceOverlay eventOverlay" role="dialog" aria-modal="true" aria-labelledby="event-title">
@@ -339,9 +340,9 @@ export default function Home() {
           <p>The gloomlings will wait until you return.</p>
           <div className="settingsActions">
             <button className="primary" onClick={closeSettings}>{running ? "Resume battle" : "Return to game"}</button>
-            <button className="restartButton" onClick={resetBattle}>Restart this adventure</button>
+            <button className="restartButton" onClick={resetBattle}>Restart and choose a starter</button>
           </div>
-          <small>Restarting keeps your chosen starter and permanent Critterbook collection.</small>
+          <small>Restarting keeps petals and Critterbook discoveries, but resets the battle and temporary recruits.</small>
         </section>
       </div>}
 
