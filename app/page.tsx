@@ -8,7 +8,7 @@ type Critter = {
 };
 
 type Enemy = { id: number; step: number; hp: number; maxHp: number; kind: string; icon: string; boss?: boolean };
-type Tower = { slot: number; critter: Critter; cooldown: number };
+type Tower = { slot: number; critter: Critter; cooldown: number; level: number };
 type EventChoice = "harvest" | "spring" | "warden";
 type BossReward = "heartseed" | "embercore" | "starcharm";
 type AttackFx = { id: number; from: number; to: number; color: string; critterId: string };
@@ -59,6 +59,8 @@ export default function Home() {
   const [owned, setOwned] = useState<string[]>([]);
   const [petals, setPetals] = useState(240);
   const [energy, setEnergy] = useState(120);
+  const [maxEnergy, setMaxEnergy] = useState(200);
+  const [dewshards, setDewshards] = useState(0);
   const [lives, setLives] = useState(10);
   const [wave, setWave] = useState(0);
   const [chapter, setChapter] = useState(1);
@@ -83,6 +85,8 @@ export default function Home() {
   const [inspectedTowerSlot, setInspectedTowerSlot] = useState<number | null>(null);
   const [combatNumbers, setCombatNumbers] = useState<CombatNumber[]>([]);
   const [stats, setStats] = useState<Record<string, StarterStats>>(emptyStarterStats);
+  const [eventBuffs, setEventBuffs] = useState({ harvest: 0, spring: 0, warden: 0 });
+  const [starCharmCount, setStarCharmCount] = useState(0);
   const enemyId = useRef(1);
   const attackId = useRef(1);
   const combatNumberId = useRef(1);
@@ -147,12 +151,14 @@ export default function Home() {
             const targetCell = activePath[Math.floor(e.step)];
             const columnGap = targetCell % BOARD_SIZE - slotCell % BOARD_SIZE;
             const rowGap = Math.floor(targetCell / BOARD_SIZE) - Math.floor(slotCell / BOARD_SIZE);
-            return Math.hypot(columnGap, rowGap) <= t.critter.range + 0.65;
+            const upgradedRange = t.critter.range + (t.level >= 3 ? 1 : 0);
+            return Math.hypot(columnGap, rowGap) <= upgradedRange + 0.65;
           });
           const target = targets.sort((a,b) => b.step - a.step)[0];
           if (target) {
             const starterBoost = starterId === "mossback" ? 1.15 : 1;
-            const damage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current);
+            const upgradeMultiplier = 1 + (t.level - 1) * 0.35;
+            const damage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current * upgradeMultiplier);
             const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(target.step))];
             target.hp -= damage;
             fired.push(t.slot);
@@ -164,18 +170,18 @@ export default function Home() {
         });
         if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: t.critter.speed } : t));
         const defeated = next.filter(e => e.hp <= 0).length;
-        if (defeated) setEnergy(v => Math.min(200, v + defeated * 8));
+        if (defeated) setEnergy(v => Math.min(maxEnergy, v + defeated * 8));
         return next.filter(e => e.hp > 0);
       });
-      setEnergy(v => Math.min(200, v + 1));
+      setEnergy(v => Math.min(maxEnergy, v + 1));
     }, 280 / gameSpeed);
     return () => clearInterval(timer);
-  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, activeSlots, gameSpeed]);
+  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, activeSlots, gameSpeed, maxEnergy]);
 
   useEffect(() => {
     if (running && spawnQueue.current === 0 && enemies.length === 0) {
       const bossCleared = wave === WAVES_PER_CHAPTER;
-      const reward = bossCleared ? 100 + chapter * 50 + wavePetalBonus.current : 18 + wave * 3 + chapter * 5 + wavePetalBonus.current;
+      const reward = bossCleared ? 100 + chapter * 50 + wavePetalBonus.current + eventBuffs.harvest * 5 : 18 + wave * 3 + chapter * 5 + wavePetalBonus.current + eventBuffs.harvest * 5;
       setRunning(false);
       setPetals(p => p + reward);
       setMessage(bossCleared ? `${activeChapter.bossName} was defeated! Choose a relic before the journey continues.` : `Wave ${wave} cleared! Your critters found ${reward} petals.`);
@@ -197,7 +203,7 @@ export default function Home() {
         }
       }
     }
-  }, [enemies, running, wave, runUnlocked, chapter, activeChapter]);
+  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, eventBuffs.harvest, starterId]);
 
   useEffect(() => {
     if (lives <= 0) { setRunning(false); spawnQueue.current = 0; setMessage("The gloom reached the Heart Tree. Regroup and try again!"); }
@@ -209,6 +215,23 @@ export default function Home() {
   const starterCritter = CRITTERS.find(c => c.id === starterId);
   const inspectedTower = inspectedTowerSlot === null ? null : towers.find(t => t.slot === inspectedTowerSlot) || null;
   const statTotals = Object.values(stats).reduce((total, item) => ({ runs: total.runs + item.runs, victories: total.victories + item.victories, bosses: total.bosses + item.bossesDefeated, waves: total.waves + item.wavesCleared }), { runs: 0, victories: 0, bosses: 0, waves: 0 });
+  const upcomingWave = Math.min(WAVES_PER_CHAPTER, wave + 1);
+  const upcomingDifficulty = (chapter - 1) * WAVES_PER_CHAPTER + upcomingWave;
+  const upcomingCount = upcomingWave === WAVES_PER_CHAPTER ? 1 : 5 + upcomingWave * 2 + waveExtraEnemies.current;
+  const upcomingBrutes = upcomingWave === WAVES_PER_CHAPTER || upcomingDifficulty < 3 ? 0 : Array.from({ length: upcomingCount }, (_, index) => upcomingCount - index).filter(queue => queue % 4 === 0).length;
+  const upcomingNormalHp = Math.round((58 + upcomingDifficulty * 18) * waveHpMultiplier.current);
+  const upcomingEnemyIntel = upcomingWave === WAVES_PER_CHAPTER
+    ? [{ icon: activeChapter.bossIcon, name: activeChapter.bossName, count: 1, hp: Math.round((1200 + chapter * 800) * waveHpMultiplier.current), ability: "Colossal: immense health and a full path to your objective." }]
+    : [
+        { icon: "👾", name: "Gloomling", count: upcomingCount - upcomingBrutes, hp: upcomingNormalHp, ability: "Skitter: steady movement with no armour." },
+        ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), ability: "Barkhide: 55 additional health." }] : []),
+      ];
+  const activeBuffs = [
+    eventBuffs.harvest ? { icon: "🌸", name: `Petal Instinct ×${eventBuffs.harvest}`, description: `+${eventBuffs.harvest * 5} petals after every wave` } : null,
+    eventBuffs.spring ? { icon: "💧", name: `Deep Spring ×${eventBuffs.spring}`, description: `+${eventBuffs.spring * 10} maximum energy` } : null,
+    eventBuffs.warden ? { icon: "🌳", name: `Rootstrength ×${eventBuffs.warden}`, description: `+${eventBuffs.warden * 5}% guardian damage` } : null,
+    starCharmCount ? { icon: "⭐", name: `Star Charm ×${starCharmCount}`, description: `+${starCharmCount * 25}% guardian damage` } : null,
+  ].filter(Boolean) as { icon: string; name: string; description: string }[];
 
   function addCombatNumber(cell: number, value: number, kind: "damage" | "heal") {
     const id = combatNumberId.current++;
@@ -222,6 +245,7 @@ export default function Home() {
     setSelected(id);
     setRunUnlocked([id]);
     setOwned(current => current.includes(id) ? current : [...current, id]);
+    setMaxEnergy(200);
     setEnergy(id === "emberfox" ? 150 : 120);
     setLives(id === "bubblefin" ? 13 : 10);
     setStats(current => ({ ...current, [id]: { ...current[id], runs: current[id].runs + 1, highestChapter: Math.max(1, current[id].highestChapter) } }));
@@ -255,26 +279,34 @@ export default function Home() {
   function chooseEvent(choice: EventChoice) {
     if (choice === "harvest") {
       setPetals(p => p + 55);
+      setDewshards(shards => shards + 2);
+      setEventBuffs(buffs => ({ ...buffs, harvest: buffs.harvest + 1 }));
       waveHpMultiplier.current = 1.35;
       waveExtraEnemies.current = 0;
       wavePetalBonus.current = 25;
       setNextWaveNote("Gloomblessing: enemies have 35% more health • +25 clear reward");
-      setMessage("You gathered the moonpetals. The gloom noticed—and grows stronger.");
+      setMessage("You gathered moonpetals and 2 Dewshards. Petal Instinct now adds 5 petals to every clear reward.");
     } else if (choice === "spring") {
-      setEnergy(e => Math.min(200, e + 50));
+      setMaxEnergy(cap => cap + 10);
+      setEnergy(e => Math.min(maxEnergy + 10, e + 50));
+      setDewshards(shards => shards + 1);
+      setEventBuffs(buffs => ({ ...buffs, spring: buffs.spring + 1 }));
       waveHpMultiplier.current = 1;
       waveExtraEnemies.current = 0;
       wavePetalBonus.current = 0;
       setNextWaveNote("Springwater: +50 ember energy • normal enemy strength");
-      setMessage("The spring restores your guardians' ember energy.");
+      setMessage("The spring restores energy, reveals 1 Dewshard, and permanently raises this run's energy capacity by 10.");
     } else {
-      setLives(l => Math.min(15, l + 2));
+      setLives(l => Math.min(20, l + 2));
       addCombatNumber(activePath[activePath.length - 1], 2, "heal");
+      setDewshards(shards => shards + 1);
+      setEventBuffs(buffs => ({ ...buffs, warden: buffs.warden + 1 }));
+      runDamageMultiplier.current *= 1.05;
       waveHpMultiplier.current = 1;
       waveExtraEnemies.current = 3;
       wavePetalBonus.current = 20;
       setNextWaveNote("Root pact: +2 Heart Tree health • 3 extra enemies • +20 clear reward");
-      setMessage("The roots shield the Heart Tree, but their rumbling attracts more gloomlings.");
+      setMessage("The roots heal your objective, uncover 1 Dewshard, and permanently grant guardians 5% damage this run.");
     }
     setEventOpen(false);
   }
@@ -285,10 +317,12 @@ export default function Home() {
       addCombatNumber(activePath[activePath.length - 1], 5, "heal");
       setMessage("The Ancient Heartseed strengthens your objective with 5 health.");
     } else if (reward === "embercore") {
-      setEnergy(e => Math.min(250, e + 100));
+      setMaxEnergy(cap => Math.max(250, cap));
+      setEnergy(e => Math.min(Math.max(250, maxEnergy), e + 100));
       setMessage("The Ember Core fills your guardians with 100 energy.");
     } else {
       runDamageMultiplier.current *= 1.25;
+      setStarCharmCount(count => count + 1);
       setMessage("The Star Charm grants every guardian 25% more damage for this run.");
     }
     setPetals(p => p + (chapter === CHAPTERS.length ? 150 : 75));
@@ -330,17 +364,29 @@ export default function Home() {
   function placeTower(slot: number) {
     if (towers.some(t => t.slot === slot)) { setInspectedTowerSlot(slot); setPaused(true); return; }
     if (energy < selectedCritter.cost) { setMessage(`Ember energy is too low. ${selectedCritter.name} needs ${selectedCritter.cost}.`); return; }
-    setEnergy(v => v - selectedCritter.cost); setTowers(ts => [...ts, { slot, critter: selectedCritter, cooldown: 0 }]); setMessage(`${selectedCritter.name} is ready to defend!`);
+    setEnergy(v => v - selectedCritter.cost); setTowers(ts => [...ts, { slot, critter: selectedCritter, cooldown: 0, level: 1 }]); setMessage(`${selectedCritter.name} is ready to defend!`);
+  }
+
+  function upgradeTower() {
+    if (!inspectedTower || inspectedTower.level >= 3) return;
+    const cost = inspectedTower.level + 1;
+    if (dewshards < cost) { setMessage(`${inspectedTower.critter.name} needs ${cost} Dewshards for the next upgrade.`); return; }
+    setDewshards(shards => shards - cost);
+    setTowers(current => current.map(tower => tower.slot === inspectedTower.slot ? { ...tower, level: tower.level + 1 } : tower));
+    setMessage(`${inspectedTower.critter.name} reached level ${inspectedTower.level + 1}!`);
   }
 
   function resetBattle() {
     setEnemies([]); setTowers([]); setWave(0); setChapter(1);
     setLives(10);
     setEnergy(120);
+    setMaxEnergy(200);
+    setDewshards(0);
     setRunning(false); setPaused(false); setSettingsOpen(false); setEventOpen(false); setRecruitChoices([]); setAttackFx([]); setCombatNumbers([]); setInspectedTowerSlot(null); setBossRewardOpen(false); setAdventureComplete(false); setNextWaveNote("No special conditions");
     setStarterId(null);
     setRunUnlocked([]);
     setSelected("emberfox");
+    setEventBuffs({ harvest: 0, spring: 0, warden: 0 }); setStarCharmCount(0);
     spawnQueue.current = 0; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; wavePetalBonus.current = 0; runDamageMultiplier.current = 1;
     setMessage("Choose a starter for your new adventure.");
   }
@@ -365,7 +411,7 @@ export default function Home() {
           <button className={tab === "statistics" ? "active" : ""} onClick={() => setTab("statistics")}>▥ Statistics</button>
           <button className={tab === "summon" ? "active" : ""} onClick={() => setTab("summon")}>✦ Wish Pond</button>
         </nav>
-        <div className="currency"><span>🌸</span><b>{petals}</b><small>petals</small></div>
+        <div className="currency resourceStat" tabIndex={0} data-tooltip="Moonpetals are permanent currency used to make wishes at the Wish Pond."><span>🌸</span><b>{petals}</b><small>petals</small></div>
         <button className="settingsButton" onClick={openSettings} aria-label="Open settings and pause game">⚙</button>
       </header>
 
@@ -387,7 +433,7 @@ export default function Home() {
       </div>}
 
       {tab === "battle" && <section className="battlePage">
-        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterId === "emberfox" ? "+30 starting energy" : starterId === "bubblefin" ? "+3 Heart Tree health" : "+15% guardian damage"}</small></div>}</div><div className="battleStats"><span>❤️ <b>{lives}</b></span><span>🔥 <b>{energy}</b></span><span>🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span><button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
+        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterId === "emberfox" ? "+30 starting energy" : starterId === "bubblefin" ? "+3 Heart Tree health" : "+15% guardian damage"}</small></div>}</div><div className="battleStats"><span className="resourceStat" tabIndex={0} data-tooltip="Objective health. You lose when it reaches zero.">❤️ <b>{lives}</b></span><span className="resourceStat" tabIndex={0} data-tooltip={`Energy places guardians. You have ${energy} of ${maxEnergy}.`}>🔥 <b>{energy}</b></span><span className="resourceStat shardStat" tabIndex={0} data-tooltip="Rare Dewshards come only from events and upgrade placed guardians.">💠 <b>{dewshards}</b></span><span className="resourceStat" tabIndex={0} data-tooltip="Current wave in this chapter. Wave 10 is the boss.">🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span><button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
         <div className="gameShell">
           <div className={`field ${activeChapter.theme}`} aria-label={`${activeChapter.region} tower defence battlefield`}>
             <div className="sun"/><div className="cloud cloudOne">☁</div><div className="cloud cloudTwo">☁</div>
@@ -401,7 +447,7 @@ export default function Home() {
             {activeSlots.map((cell, slot) => {
               const tower = towers.find(t => t.slot === slot);
               return <button key={cell} aria-label={tower ? tower.critter.name : "Empty defender stone"} className={`towerSlot ${tower ? "filled" : ""}`} onClick={() => placeTower(slot)} style={{...cellStyle(cell), ...(tower ? {"--critter": tower.critter.color} : {})} as React.CSSProperties}>
-                {tower ? <><span>{tower.critter.icon}</span><small>{tower.critter.name}</small></> : <><span>✦</span><small>PLACE</small></>}
+                {tower ? <><span>{tower.critter.icon}</span><small>{tower.critter.name} • L{tower.level}</small></> : <><span>✦</span><small>PLACE</small></>}
               </button>;
             })}
             {enemies.map(e => { const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy ${e.boss ? "boss" : ""}`} style={cellStyle(p)}>{e.boss && <small>BOSS</small>}<span>{e.icon}</span><i><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
@@ -421,6 +467,8 @@ export default function Home() {
               </button>)}
             </div>
             <div className="selectedInfo"><span style={{background:selectedCritter.color}}>{selectedCritter.icon}</span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range}</small></div></div>
+            <div className="buffPanel"><div className="buffTitle"><b>Run buffs</b><small>Last until this run ends</small></div>{activeBuffs.length ? <div className="buffList">{activeBuffs.map(buff => <span key={buff.name}><i>{buff.icon}</i><b>{buff.name}</b><small>{buff.description}</small></span>)}</div> : <p>No permanent run buffs yet. Event decisions can grant them.</p>}</div>
+            {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><span>{enemy.icon}</span><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP each</small><p>{enemy.ability}</p></div></article>)}</div>}
             {wave > 0 && wave < WAVES_PER_CHAPTER && <div className={`waveCondition ${wave === WAVES_PER_CHAPTER - 1 ? "bossWarning" : ""}`}><small>{wave === WAVES_PER_CHAPTER - 1 ? "BOSS APPROACHING" : "NEXT WAVE"}</small><b>{wave === WAVES_PER_CHAPTER - 1 ? activeChapter.bossName : nextWaveNote}</b></div>}
             {lives > 0 ? <button className="primary" disabled={running || wave >= WAVES_PER_CHAPTER || eventOpen || recruitChoices.length > 0 || bossRewardOpen || adventureComplete || !starterId} onClick={startWave}>{running ? paused ? "Battle paused" : wave === WAVES_PER_CHAPTER ? "Boss battle in progress…" : "Wave in progress…" : recruitChoices.length ? "Recruit a guardian" : eventOpen ? "Choose a forest event" : bossRewardOpen ? "Choose your boss reward" : adventureComplete ? "Adventure complete!" : wave >= WAVES_PER_CHAPTER ? `${activeChapter.region} protected!` : wave === WAVES_PER_CHAPTER - 1 ? `Challenge ${activeChapter.bossName}` : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Choose a new starter</button>}
             {wave > 0 && !running && <button className="textButton" onClick={resetBattle}>Restart with a new starter</button>}
@@ -432,9 +480,9 @@ export default function Home() {
             <h1 id="event-title">Moonlight at the old crossroads</h1>
             <p>The forest offers three paths. Every gift has a consequence.</p>
             <div className="eventChoices">
-              <button onClick={() => chooseEvent("harvest")}><span>🌸</span><div><small>RISKY</small><b>Harvest moonpetals</b><p>Gain 55 petals now. The next wave has 35% more health but rewards 25 extra petals.</p></div></button>
-              <button onClick={() => chooseEvent("spring")}><span>💧</span><div><small>SAFE</small><b>Rest by the spring</b><p>Restore 50 ember energy. The next wave remains at normal strength.</p></div></button>
-              <button onClick={() => chooseEvent("warden")}><span>🌳</span><div><small>TACTICAL</small><b>Make a root pact</b><p>Heal 2 Heart Tree health. Face 3 extra enemies for 20 bonus petals.</p></div></button>
+              <button onClick={() => chooseEvent("harvest")}><span>🌸</span><div><small>RISKY • 💠 2</small><b>Harvest moonpetals</b><p>Gain 55 petals and 2 Dewshards. Permanently gain +5 petals per wave. The next wave has 35% more health.</p></div></button>
+              <button onClick={() => chooseEvent("spring")}><span>💧</span><div><small>SAFE • 💠 1</small><b>Rest by the spring</b><p>Restore 50 energy, gain 1 Dewshard, and permanently increase maximum energy by 10.</p></div></button>
+              <button onClick={() => chooseEvent("warden")}><span>🌳</span><div><small>TACTICAL • 💠 1</small><b>Make a root pact</b><p>Heal 2 objective health, gain 1 Dewshard, and permanently grant +5% guardian damage. Face 3 extra enemies next wave.</p></div></button>
             </div>
           </section>
         </div>}
@@ -465,15 +513,16 @@ export default function Home() {
         {inspectedTower && <div className="choiceOverlay towerInfoOverlay" role="dialog" aria-modal="true" aria-labelledby="tower-info-title">
           <section className="choicePanel towerInfoPanel" style={{"--accent": inspectedTower.critter.color} as React.CSSProperties}>
             <button className="closeInfo" onClick={closeTowerInfo} aria-label="Close tower information">×</button>
-            <span className="towerInfoPortrait">{inspectedTower.critter.icon}</span><span className="eyebrow">PLACED GUARDIAN • {inspectedTower.critter.rarity}</span>
+            <span className="towerInfoPortrait">{inspectedTower.critter.icon}</span><span className="eyebrow">PLACED GUARDIAN • {inspectedTower.critter.rarity} • LEVEL {inspectedTower.level}</span>
             <h1 id="tower-info-title">{inspectedTower.critter.name}</h1>
             <p>{inspectedTower.critter.title}</p>
             <div className="towerStatsGrid">
-              <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * (starterId === "mossback" ? 1.15 : 1) * runDamageMultiplier.current)}</b></span>
-              <span><small>RANGE</small><b>{inspectedTower.critter.range} tiles</b></span>
+              <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * (starterId === "mossback" ? 1.15 : 1) * runDamageMultiplier.current * (1 + (inspectedTower.level - 1) * 0.35))}</b></span>
+              <span><small>RANGE</small><b>{inspectedTower.critter.range + (inspectedTower.level >= 3 ? 1 : 0)} tiles</b></span>
               <span><small>ATTACK TEMPO</small><b>{inspectedTower.critter.speed <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
             </div>
             <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>
+            <button className="upgradeButton" disabled={inspectedTower.level >= 3} onClick={upgradeTower}>{inspectedTower.level >= 3 ? "Maximum level reached" : `Upgrade to level ${inspectedTower.level + 1} • 💠 ${inspectedTower.level + 1}`}</button>
             <button className="primary" onClick={closeTowerInfo}>Return to battle</button>
           </section>
         </div>}
