@@ -10,7 +10,7 @@ type Critter = {
 };
 
 type Enemy = { id: number; step: number; hp: number; maxHp: number; shield: number; maxShield: number; kind: string; icon: string; boss?: boolean; burnTicks?: number; burnDamage?: number; slowTicks?: number; slowFactor?: number };
-type Tower = { slot: number; critter: Critter; cooldown: number; level: number };
+type Tower = { slot: number; critter: Critter; cooldown: number };
 type EventChoice = "harvest" | "spring" | "warden";
 type BossReward = "heartseed" | "embercore" | "starcharm";
 type AttackFx = { id: number; from: number; to: number; color: string; critterId: string };
@@ -175,15 +175,14 @@ export default function Home() {
             const targetCell = activePath[Math.floor(e.step)];
             const columnGap = targetCell % BOARD_SIZE - slotCell % BOARD_SIZE;
             const rowGap = Math.floor(targetCell / BOARD_SIZE) - Math.floor(slotCell / BOARD_SIZE);
-            const upgradedRange = t.critter.range + (t.level >= 3 ? 1 : 0) + (starterId === "moonowl" ? 1 : 0);
-            return Math.hypot(columnGap, rowGap) <= upgradedRange + 0.65;
+            const effectiveRange = t.critter.range + (starterId === "moonowl" ? 1 : 0);
+            return Math.hypot(columnGap, rowGap) <= effectiveRange + 0.65;
           })());
           const sortedTargets = targets.sort((a,b) => b.step - a.step);
           const target = sortedTargets[0];
           if (target) {
             const starterBoost = starterId === "mossback" ? 1.15 : 1;
-            const upgradeMultiplier = 1 + (t.level - 1) * 0.35;
-            const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current * upgradeMultiplier);
+            const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current);
             const abilityRank = t.critter.tier - 1;
             let hits: { enemy: Enemy; multiplier: number }[] = [{ enemy: target, multiplier: 1 }];
             if (t.critter.ability === "waterSplash") {
@@ -247,7 +246,7 @@ export default function Home() {
         setBossRewardOpen(true);
       } else if (wave < WAVES_PER_CHAPTER) {
         if ([1, 3, 6].includes(wave)) {
-          const available = CRITTERS.filter(c => !runUnlocked.includes(c.id) && (!c.wishOnly || owned.includes(c.id)));
+          const available = CRITTERS.filter(c => c.tier === 1 && !runUnlocked.includes(c.id) && (!c.wishOnly || owned.includes(c.id)));
           if (available.length) {
             const offset = wave === 3 && available.length > 3 ? 1 : 0;
             setRecruitChoices([...available.slice(offset, offset + 3), ...available.slice(0, offset)].slice(0, 3));
@@ -271,6 +270,7 @@ export default function Home() {
   const starterCritter = CRITTERS.find(c => c.id === starterId);
   const starterChoices = CRITTERS.filter(c => c.starterEligible && (!c.wishOnly || owned.includes(c.id)));
   const inspectedTower = inspectedTowerSlot === null ? null : towers.find(t => t.slot === inspectedTowerSlot) || null;
+  const inspectedEvolution = inspectedTower ? CRITTERS.find(c => c.upgradeOf === inspectedTower.critter.id) || null : null;
   const statTotals = Object.values(stats).reduce((total, item) => ({ runs: total.runs + item.runs, victories: total.victories + item.victories, bosses: total.bosses + item.bossesDefeated, waves: total.waves + item.wavesCleared }), { runs: 0, victories: 0, bosses: 0, waves: 0 });
   const upcomingWave = Math.min(WAVES_PER_CHAPTER, wave + 1);
   const upcomingDifficulty = (chapter - 1) * WAVES_PER_CHAPTER + upcomingWave;
@@ -422,16 +422,17 @@ export default function Home() {
   function placeTower(slot: number) {
     if (towers.some(t => t.slot === slot)) { setInspectedTowerSlot(slot); setPaused(true); return; }
     if (energy < selectedCritter.cost) { setMessage(`Ember energy is too low. ${selectedCritter.name} needs ${selectedCritter.cost}.`); return; }
-    setEnergy(v => v - selectedCritter.cost); setTowers(ts => [...ts, { slot, critter: selectedCritter, cooldown: 0, level: 1 }]); setMessage(`${selectedCritter.name} is ready to defend!`);
+    setEnergy(v => v - selectedCritter.cost); setTowers(ts => [...ts, { slot, critter: selectedCritter, cooldown: 0 }]); setMessage(`${selectedCritter.name} is ready to defend!`);
   }
 
-  function upgradeTower() {
-    if (!inspectedTower || inspectedTower.level >= 3) return;
-    const cost = inspectedTower.level + 1;
-    if (dewshards < cost) { setMessage(`${inspectedTower.critter.name} needs ${cost} Dewshards for the next upgrade.`); return; }
+  function evolveTower() {
+    if (!inspectedTower || !inspectedEvolution) return;
+    const cost = inspectedTower.critter.tier === 1 ? 1 : 2;
+    if (dewshards < cost) { setMessage(`${inspectedTower.critter.name} needs ${cost} Dewshard${cost === 1 ? "" : "s"} to evolve into ${inspectedEvolution.name}.`); return; }
     setDewshards(shards => shards - cost);
-    setTowers(current => current.map(tower => tower.slot === inspectedTower.slot ? { ...tower, level: tower.level + 1 } : tower));
-    setMessage(`${inspectedTower.critter.name} reached level ${inspectedTower.level + 1}!`);
+    setTowers(current => current.map(tower => tower.slot === inspectedTower.slot ? { ...tower, critter: inspectedEvolution, cooldown: 0 } : tower));
+    setOwned(current => current.includes(inspectedEvolution.id) ? current : [...current, inspectedEvolution.id]);
+    setMessage(`${inspectedTower.critter.name} evolved into ${inspectedEvolution.name}!`);
   }
 
   function resetBattle() {
@@ -452,13 +453,9 @@ export default function Home() {
   function summon() {
     if (petals < 100) { setMessage("You need 100 petals for a new friendship."); return; }
     setPetals(p => p - 100);
-    const roll = Math.random();
-    const rarity: Critter["rarity"] = roll < 0.15 ? "Legendary" : roll < 0.5 ? "Rare" : "Common";
-    const eligible = CRITTERS.filter(c => c.wishOnly && (!c.upgradeOf || owned.includes(c.upgradeOf)));
-    const rarityPool = eligible.filter(c => c.rarity === rarity);
-    const pool = rarityPool.length ? rarityPool : eligible;
+    const pool = CRITTERS.filter(c => c.tier === 1 && c.wishOnly);
     const pick = pool[Math.floor(Math.random() * pool.length)];
-    if (!pick) { setPetals(p => p + 100); setMessage("The pond is quiet. Discover the previous evolution before wishing for its next form."); return; }
+    if (!pick) { setPetals(p => p + 100); setMessage("The pond is quiet. More base guardians will arrive in a future update."); return; }
     setSummoned(pick);
     if (!owned.includes(pick.id)) setOwned(o => [...o, pick.id]); else setPetals(p => p + 35);
   }
@@ -495,7 +492,7 @@ export default function Home() {
       </div>}
 
       {tab === "battle" && <section className="battlePage">
-        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterBlessing(starterCritter.id)}</small></div>}</div><div className="battleStats"><span className="resourceStat" tabIndex={0} data-tooltip="Objective health. You lose when it reaches zero.">❤️ <b>{lives}</b></span><span className="resourceStat" tabIndex={0} data-tooltip={`Energy places guardians. You have ${energy} of ${maxEnergy}.`}>🔥 <b>{energy}</b></span><span className="resourceStat shardStat" tabIndex={0} data-tooltip="Rare Dewshards come only from events and upgrade placed guardians.">💠 <b>{dewshards}</b></span><span className="resourceStat" tabIndex={0} data-tooltip="Current wave in this chapter. Wave 10 is the boss.">🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span><button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
+        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterBlessing(starterCritter.id)}</small></div>}</div><div className="battleStats"><span className="resourceStat" tabIndex={0} data-tooltip="Objective health. You lose when it reaches zero.">❤️ <b>{lives}</b></span><span className="resourceStat" tabIndex={0} data-tooltip={`Energy places guardians. You have ${energy} of ${maxEnergy}.`}>🔥 <b>{energy}</b></span><span className="resourceStat shardStat" tabIndex={0} data-tooltip="Rare Dewshards come from events. Evolving Tier 1 to Tier 2 costs 1; Tier 2 to Tier 3 costs 2.">💠 <b>{dewshards}</b></span><span className="resourceStat" tabIndex={0} data-tooltip="Current wave in this chapter. Wave 10 is the boss.">🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span><button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
         <div className="gameShell">
           <div className={`field ${activeChapter.theme}`} aria-label={`${activeChapter.region} tower defence battlefield`}>
             <div className="sun"/><div className="cloud cloudOne">☁</div><div className="cloud cloudTwo">☁</div>
@@ -509,7 +506,7 @@ export default function Home() {
             {activeSlots.map((cell, slot) => {
               const tower = towers.find(t => t.slot === slot);
               return <button key={cell} aria-label={tower ? tower.critter.name : "Empty defender stone"} className={`towerSlot ${tower ? "filled" : ""}`} onClick={() => placeTower(slot)} style={{...cellStyle(cell), ...(tower ? {"--critter": tower.critter.color} : {})} as React.CSSProperties}>
-                {tower ? <><span>{tower.critter.icon}</span><small>{tower.critter.name} • L{tower.level}</small></> : <><span>✦</span><small>PLACE</small></>}
+                {tower ? <><span>{tower.critter.icon}</span><small>{tower.critter.name} • T{tower.critter.tier}</small></> : <><span>✦</span><small>PLACE</small></>}
               </button>;
             })}
             {enemies.map(e => { const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy ${e.boss ? "boss" : ""}`} style={cellStyle(p)}>{e.boss && <small>BOSS</small>}<span>{e.icon}</span>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
@@ -575,16 +572,16 @@ export default function Home() {
         {inspectedTower && <div className="choiceOverlay towerInfoOverlay" role="dialog" aria-modal="true" aria-labelledby="tower-info-title">
           <section className="choicePanel towerInfoPanel" style={{"--accent": inspectedTower.critter.color} as React.CSSProperties}>
             <button className="closeInfo" onClick={closeTowerInfo} aria-label="Close tower information">×</button>
-            <span className="towerInfoPortrait">{inspectedTower.critter.icon}</span><span className="eyebrow">PLACED GUARDIAN • {inspectedTower.critter.rarity} • LEVEL {inspectedTower.level}</span>
+            <span className="towerInfoPortrait">{inspectedTower.critter.icon}</span><span className="eyebrow">PLACED GUARDIAN • {inspectedTower.critter.rarity} • TIER {inspectedTower.critter.tier}</span>
             <h1 id="tower-info-title">{inspectedTower.critter.name}</h1>
             <p>{inspectedTower.critter.title}</p>
             <div className="towerStatsGrid">
-              <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * (starterId === "mossback" ? 1.15 : 1) * runDamageMultiplier.current * (1 + (inspectedTower.level - 1) * 0.35))}</b></span>
-              <span><small>RANGE</small><b>{inspectedTower.critter.range + (inspectedTower.level >= 3 ? 1 : 0) + (starterId === "moonowl" ? 1 : 0)} tiles</b></span>
+              <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * (starterId === "mossback" ? 1.15 : 1) * runDamageMultiplier.current)}</b></span>
+              <span><small>RANGE</small><b>{inspectedTower.critter.range + (starterId === "moonowl" ? 1 : 0)} tiles</b></span>
               <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - (starterId === "sparkit" ? 1 : 0)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
             </div>
             <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>
-            <button className="upgradeButton" disabled={inspectedTower.level >= 3} onClick={upgradeTower}>{inspectedTower.level >= 3 ? "Maximum level reached" : `Upgrade to level ${inspectedTower.level + 1} • 💠 ${inspectedTower.level + 1}`}</button>
+            <button className="upgradeButton" disabled={!inspectedEvolution} onClick={evolveTower}>{inspectedEvolution ? `Evolve into ${inspectedEvolution.name} • 💠 ${inspectedTower.critter.tier === 1 ? 1 : 2}` : "Final evolution reached"}</button>
             <button className="primary" onClick={closeTowerInfo}>Return to battle</button>
           </section>
         </div>}
@@ -605,10 +602,10 @@ export default function Home() {
 
       {tab === "collection" && <section className="bookPage">
         <div className="pageHeading"><span className="eyebrow">YOUR LIVING COLLECTION</span><h1>The Critterbook</h1><p>Every friendship adds a new leaf to the Heart Tree.</p></div>
-        <div className="evolutionGuide"><span><b>Common</b> Base forms and starting guardians</span><i>→</i><span><b>Rare</b> Stronger signature abilities</span><i>→</i><span><b>Legendary</b> Final core evolutions</span><em>Epic sidegrade paths will arrive in a future update.</em></div>
+        <div className="evolutionGuide"><span><b>Tier 1</b> Base forms and starting guardians</span><i>→ 💠 1</i><span><b>Tier 2</b> Evolved forms with stronger abilities</span><i>→ 💠 2</i><span><b>Tier 3</b> Final core evolutions</span><em>Place a guardian, select it, and spend Dewshards to evolve it during that run. Epic sidegrade paths will arrive later.</em></div>
         <div className="progressCard"><div><span>✿</span><b>{owned.length} of {CRITTERS.length} discovered</b></div><div className="progress"><i style={{width:`${owned.length/CRITTERS.length*100}%`}}/></div></div>
         <div className="cards">{CRITTERS.map((c, i) => { const unlocked = owned.includes(c.id); const baseCritter = c.upgradeOf ? CRITTERS.find(base => base.id === c.upgradeOf) : null; return <article key={c.id} className={!unlocked ? "locked" : ""} style={{"--accent": c.color} as React.CSSProperties}>
-          <div className="cardTop"><small>NO. {String(i + 1).padStart(3, "0")}</small><span>{c.rarity} • TIER {c.tier}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.upgradeOf ? c.tier === 3 ? "A final evolution waits beyond its Rare form…" : "A stronger signature evolution sleeps in the Wish Pond…" : c.starterEligible ? "An unlockable starting guardian waits in the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ From {baseCritter.name}</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span><span>🔥 {c.cost}</span></div>}
+          <div className="cardTop"><small>NO. {String(i + 1).padStart(3, "0")}</small><span>{c.rarity} • TIER {c.tier}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.upgradeOf ? `Evolve ${baseCritter?.name || "the previous form"} during a run to discover this form…` : c.starterEligible ? "An unlockable starting guardian waits in the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ Evolves from {baseCritter.name}</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span>{c.tier === 1 && <span>🔥 {c.cost}</span>}</div>}
         </article>; })}</div>
       </section>}
 
@@ -629,8 +626,8 @@ export default function Home() {
       </section>}
 
       {tab === "summon" && <section className="summonPage">
-        <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><span>{summoned.icon}</span><small>{summoned.rarity} friend</small><h2>{summoned.name}</h2><p>{summoned.upgradeOf ? `Wish Pond evolution • ${summoned.skill}` : summoned.skill}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
-        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>Discover Sparkit, Bloomwing, and Moonowl to make them available as future starters. Rare evolutions become wishable after discovering their base form, and Legendary finals unlock after their Rare form. Duplicates return 35 petals.</p><div className="odds"><span>Common <b>50%</b></span><span>Rare <b>35%</b></span><span>Legendary <b>15%</b></span></div><small className="futurePath">Epic alternative evolutions are planned as balanced sidegrades.</small><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
+        <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><span>{summoned.icon}</span><small>Tier 1 friend</small><h2>{summoned.name}</h2><p>{summoned.skill}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
+        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>The Wish Pond discovers new Tier 1 guardians such as Sparkit, Bloomwing, and Moonowl. Their Tier 2 and Tier 3 forms are reached by evolving placed guardians with Dewshards during a run. Duplicates return 35 petals.</p><div className="odds"><span>Tier 1 guardian <b>100%</b></span></div><small className="futurePath">Epic alternative evolutions are planned as balanced sidegrades.</small><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
       </section>}
       <footer><span>Prototype meadow • Progress saves on this device</span><span>Made with a little magic ✦</span></footer>
     </main>
