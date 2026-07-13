@@ -9,6 +9,7 @@ type Critter = {
 
 type Enemy = { id: number; step: number; hp: number; maxHp: number; kind: string; icon: string };
 type Tower = { slot: number; critter: Critter; cooldown: number };
+type EventChoice = "harvest" | "spring" | "warden";
 
 const CRITTERS: Critter[] = [
   { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", skill: "Fast little fireballs" },
@@ -35,20 +36,34 @@ export default function Home() {
   const [message, setMessage] = useState("Choose a critter, then tap a glowing meadow stone.");
   const [running, setRunning] = useState(false);
   const [summoned, setSummoned] = useState<Critter | null>(null);
+  const [starterId, setStarterId] = useState<string | null>(null);
+  const [eventOpen, setEventOpen] = useState(false);
+  const [nextWaveNote, setNextWaveNote] = useState("No special conditions");
+  const [saveLoaded, setSaveLoaded] = useState(false);
   const enemyId = useRef(1);
   const spawnQueue = useRef(0);
   const spawnTimer = useRef(0);
+  const waveHpMultiplier = useRef(1);
+  const waveExtraEnemies = useRef(0);
+  const wavePetalBonus = useRef(0);
 
   useEffect(() => {
     const saved = localStorage.getItem("critter-keepers-save");
     if (saved) {
-      try { const data = JSON.parse(saved); setOwned(data.owned || owned); setPetals(data.petals ?? petals); } catch { /* fresh save */ }
+      try {
+        const data = JSON.parse(saved);
+        setOwned(data.owned || owned);
+        setPetals(data.petals ?? petals);
+        setStarterId(data.starterId || null);
+        if (data.starterId) setSelected(data.starterId);
+      } catch { /* fresh save */ }
     }
+    setSaveLoaded(true);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("critter-keepers-save", JSON.stringify({ owned, petals }));
-  }, [owned, petals]);
+    if (saveLoaded) localStorage.setItem("critter-keepers-save", JSON.stringify({ owned, petals, starterId }));
+  }, [owned, petals, starterId, saveLoaded]);
 
   useEffect(() => {
     if (!running) return;
@@ -56,7 +71,7 @@ export default function Home() {
       spawnTimer.current--;
       if (spawnQueue.current > 0 && spawnTimer.current <= 0) {
         const tough = wave >= 3 && spawnQueue.current % 4 === 0;
-        const hp = 58 + wave * 22 + (tough ? 55 : 0);
+        const hp = Math.round((58 + wave * 22 + (tough ? 55 : 0)) * waveHpMultiplier.current);
         setEnemies(es => [...es, { id: enemyId.current++, step: 0, hp, maxHp: hp, kind: tough ? "Bramble Brute" : "Gloomling", icon: tough ? "👹" : "👾" }]);
         spawnQueue.current--;
         spawnTimer.current = 4;
@@ -75,7 +90,11 @@ export default function Home() {
           const slotCell = SLOTS[t.slot];
           const targets = next.filter(e => Math.abs(PATH[Math.floor(e.step)] - slotCell) <= t.critter.range * 5.2);
           const target = targets.sort((a,b) => b.step - a.step)[0];
-          if (target) { target.hp -= t.critter.damage; fired.push(t.slot); }
+          if (target) {
+            const starterBoost = starterId === "mossback" ? 1.15 : 1;
+            target.hp -= Math.round(t.critter.damage * starterBoost);
+            fired.push(t.slot);
+          }
         });
         if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: t.critter.speed } : t));
         const defeated = next.filter(e => e.hp <= 0).length;
@@ -85,11 +104,16 @@ export default function Home() {
       setEnergy(v => Math.min(200, v + 1));
     }, 280);
     return () => clearInterval(timer);
-  }, [running, towers, wave]);
+  }, [running, towers, wave, starterId]);
 
   useEffect(() => {
     if (running && spawnQueue.current === 0 && enemies.length === 0) {
-      setRunning(false); setPetals(p => p + 18 + wave * 3); setMessage(`Wave ${wave} cleared! Your critters found ${18 + wave * 3} petals.`);
+      const reward = 18 + wave * 3 + wavePetalBonus.current;
+      setRunning(false);
+      setPetals(p => p + reward);
+      setMessage(`Wave ${wave} cleared! Your critters found ${reward} petals.`);
+      wavePetalBonus.current = 0;
+      if (wave < 5) setEventOpen(true);
     }
   }, [enemies, running, wave]);
 
@@ -99,10 +123,47 @@ export default function Home() {
 
   const selectedCritter = CRITTERS.find(c => c.id === selected)!;
   const ownedCritters = useMemo(() => CRITTERS.filter(c => owned.includes(c.id)), [owned]);
+  const starterCritter = CRITTERS.find(c => c.id === starterId);
+
+  function chooseStarter(id: string) {
+    const critter = CRITTERS.find(c => c.id === id)!;
+    setStarterId(id);
+    setSelected(id);
+    setOwned(current => current.includes(id) ? current : [...current, id]);
+    setEnergy(id === "emberfox" ? 150 : 120);
+    setLives(id === "bubblefin" ? 13 : 10);
+    setMessage(`${critter.name} has chosen you. Place your first guardian when you are ready!`);
+  }
+
+  function chooseEvent(choice: EventChoice) {
+    if (choice === "harvest") {
+      setPetals(p => p + 55);
+      waveHpMultiplier.current = 1.35;
+      waveExtraEnemies.current = 0;
+      wavePetalBonus.current = 25;
+      setNextWaveNote("Gloomblessing: enemies have 35% more health • +25 clear reward");
+      setMessage("You gathered the moonpetals. The gloom noticed—and grows stronger.");
+    } else if (choice === "spring") {
+      setEnergy(e => Math.min(200, e + 50));
+      waveHpMultiplier.current = 1;
+      waveExtraEnemies.current = 0;
+      wavePetalBonus.current = 0;
+      setNextWaveNote("Springwater: +50 ember energy • normal enemy strength");
+      setMessage("The spring restores your guardians' ember energy.");
+    } else {
+      setLives(l => Math.min(15, l + 2));
+      waveHpMultiplier.current = 1;
+      waveExtraEnemies.current = 3;
+      wavePetalBonus.current = 20;
+      setNextWaveNote("Root pact: +2 Heart Tree health • 3 extra enemies • +20 clear reward");
+      setMessage("The roots shield the Heart Tree, but their rumbling attracts more gloomlings.");
+    }
+    setEventOpen(false);
+  }
 
   function startWave() {
-    if (running || lives <= 0) return;
-    const next = wave + 1; setWave(next); spawnQueue.current = 5 + next * 2; spawnTimer.current = 0; setRunning(true); setMessage(`Wave ${next} is rustling through the woods…`);
+    if (running || lives <= 0 || eventOpen || !starterId) return;
+    const next = wave + 1; setWave(next); spawnQueue.current = 5 + next * 2 + waveExtraEnemies.current; spawnTimer.current = 0; setRunning(true); setMessage(`Wave ${next} is rustling through the woods…`);
   }
 
   function placeTower(slot: number) {
@@ -111,7 +172,14 @@ export default function Home() {
     setEnergy(v => v - selectedCritter.cost); setTowers(ts => [...ts, { slot, critter: selectedCritter, cooldown: 0 }]); setMessage(`${selectedCritter.name} is ready to defend!`);
   }
 
-  function resetBattle() { setEnemies([]); setTowers([]); setWave(0); setLives(10); setEnergy(120); setRunning(false); spawnQueue.current = 0; setMessage("A fresh adventure begins!"); }
+  function resetBattle() {
+    setEnemies([]); setTowers([]); setWave(0);
+    setLives(starterId === "bubblefin" ? 13 : 10);
+    setEnergy(starterId === "emberfox" ? 150 : 120);
+    setRunning(false); setEventOpen(false); setNextWaveNote("No special conditions");
+    spawnQueue.current = 0; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; wavePetalBonus.current = 0;
+    setMessage("A fresh adventure begins!");
+  }
 
   function summon() {
     if (petals < 100) { setMessage("You need 100 petals for a new friendship."); return; }
@@ -135,8 +203,25 @@ export default function Home() {
         <div className="currency"><span>🌸</span><b>{petals}</b><small>petals</small></div>
       </header>
 
+      {saveLoaded && !starterId && <div className="choiceOverlay starterOverlay" role="dialog" aria-modal="true" aria-labelledby="starter-title">
+        <section className="choicePanel starterPanel">
+          <span className="eyebrow">YOUR FIRST FRIEND</span>
+          <h1 id="starter-title">Who will guard the Heart Tree?</h1>
+          <p>Choose your starting critter. Each companion grants a different blessing for every meadow adventure.</p>
+          <div className="starterChoices">
+            {CRITTERS.slice(0, 3).map(c => <button key={c.id} onClick={() => chooseStarter(c.id)} style={{"--accent": c.color} as React.CSSProperties}>
+              <span className="starterPortrait">{c.icon}</span>
+              <small>{c.title}</small><b>{c.name}</b>
+              <em>{c.id === "emberfox" ? "+30 starting energy" : c.id === "bubblefin" ? "+3 Heart Tree health" : "+15% guardian damage"}</em>
+              <strong>Choose {c.name}</strong>
+            </button>)}
+          </div>
+          <small className="choiceHint">Your friendship is saved on this device. You can begin a fresh adventure later.</small>
+        </section>
+      </div>}
+
       {tab === "battle" && <section className="battlePage">
-        <div className="battleIntro"><div><span className="eyebrow">SUNDEW MEADOW • CHAPTER 1</span><h1>Whispers in the Clover</h1></div><div className="battleStats"><span>❤️ <b>{lives}</b></span><span>🔥 <b>{energy}</b></span><span>🌙 <b>{wave}/5</b></span></div></div>
+        <div className="battleIntro"><div><span className="eyebrow">SUNDEW MEADOW • CHAPTER 1</span><h1>Whispers in the Clover</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterId === "emberfox" ? "+30 starting energy" : starterId === "bubblefin" ? "+3 Heart Tree health" : "+15% guardian damage"}</small></div>}</div><div className="battleStats"><span>❤️ <b>{lives}</b></span><span>🔥 <b>{energy}</b></span><span>🌙 <b>{wave}/5</b></span></div></div>
         <div className="gameShell">
           <div className="field" aria-label="Tower defence battlefield">
             <div className="sun"/><div className="cloud cloudOne">☁</div><div className="cloud cloudTwo">☁</div>
@@ -165,10 +250,23 @@ export default function Home() {
               </button>)}
             </div>
             <div className="selectedInfo"><span style={{background:selectedCritter.color}}>{selectedCritter.icon}</span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range}</small></div></div>
-            {lives > 0 ? <button className="primary" disabled={running || wave >= 5} onClick={startWave}>{running ? "Wave in progress…" : wave >= 5 ? "Meadow protected!" : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Try the meadow again</button>}
+            {wave > 0 && wave < 5 && <div className="waveCondition"><small>NEXT WAVE</small><b>{nextWaveNote}</b></div>}
+            {lives > 0 ? <button className="primary" disabled={running || wave >= 5 || eventOpen || !starterId} onClick={startWave}>{running ? "Wave in progress…" : eventOpen ? "Choose a forest event" : wave >= 5 ? "Meadow protected!" : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Try the meadow again</button>}
             {wave > 0 && !running && <button className="textButton" onClick={resetBattle}>Restart adventure</button>}
           </aside>
         </div>
+        {eventOpen && <div className="choiceOverlay eventOverlay" role="dialog" aria-modal="true" aria-labelledby="event-title">
+          <section className="choicePanel eventPanel">
+            <span className="eventIcon">🌙</span><span className="eyebrow">BETWEEN THE WAVES</span>
+            <h1 id="event-title">Moonlight at the old crossroads</h1>
+            <p>The forest offers three paths. Every gift has a consequence.</p>
+            <div className="eventChoices">
+              <button onClick={() => chooseEvent("harvest")}><span>🌸</span><div><small>RISKY</small><b>Harvest moonpetals</b><p>Gain 55 petals now. The next wave has 35% more health but rewards 25 extra petals.</p></div></button>
+              <button onClick={() => chooseEvent("spring")}><span>💧</span><div><small>SAFE</small><b>Rest by the spring</b><p>Restore 50 ember energy. The next wave remains at normal strength.</p></div></button>
+              <button onClick={() => chooseEvent("warden")}><span>🌳</span><div><small>TACTICAL</small><b>Make a root pact</b><p>Heal 2 Heart Tree health. Face 3 extra enemies for 20 bonus petals.</p></div></button>
+            </div>
+          </section>
+        </div>}
       </section>}
 
       {tab === "collection" && <section className="bookPage">
