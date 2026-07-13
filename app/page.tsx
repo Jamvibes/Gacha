@@ -6,7 +6,7 @@ type Critter = {
   id: string; name: string; title: string; icon: string; color: string;
   cost: number; damage: number; speed: number; range: number; rarity: "Common" | "Rare" | "Epic" | "Legendary"; skill: string;
   ability: "burn" | "waterSplash" | "slow" | "chain" | "shieldPierce" | "beam";
-  tier: 1 | 2 | 3; starterEligible?: boolean; wishOnly?: boolean; upgradeOf?: string; evolutionPath?: "core" | "alternative";
+  tier: 1 | 2 | 3; starterEligible?: boolean; wishOnly?: boolean; upgradeOf?: string; evolutionPath?: "core" | "alternative"; sprite?: string;
 };
 
 type Enemy = { id: number; step: number; hp: number; maxHp: number; shield: number; maxShield: number; kind: string; icon: string; boss?: boolean; burnTicks?: number; burnDamage?: number; slowTicks?: number; slowFactor?: number };
@@ -19,19 +19,19 @@ type StarterStats = { runs: number; victories: number; bossesDefeated: number; w
 type ChapterConfig = { number: number; region: string; title: string; theme: string; path: number[]; slots: number[]; bossName: string; bossIcon: string; goalIcon: string; goalName: string };
 
 const CRITTERS: Critter[] = [
-  { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", tier: 1, starterEligible: true, ability: "burn", skill: "Kindle: burns its target for 20% damage over 3 ticks." },
+  { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", tier: 1, starterEligible: true, ability: "burn", skill: "Kindle: burns its target for 20% damage over 3 ticks.", sprite: "./critters/emberfox-sprite.png" },
   { id: "bubblefin", name: "Bubblefin", title: "Puddle Pal", icon: "🐟", color: "#54bde8", cost: 55, damage: 12, speed: 3, range: 3, rarity: "Common", tier: 1, starterEligible: true, ability: "waterSplash", skill: "Bubble Burst: splashes its target and nearby enemies." },
   { id: "mossback", name: "Mossback", title: "Gentle Guard", icon: "🐢", color: "#6fc174", cost: 65, damage: 32, speed: 5, range: 1, rarity: "Common", tier: 1, starterEligible: true, ability: "slow", skill: "Root Slam: slows its target by 45% for 4 ticks." },
   { id: "sparkit", name: "Sparkit", title: "Storm Kitten", icon: "🐱", color: "#f5c84b", cost: 75, damage: 23, speed: 3, range: 2, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "chain", skill: "Chain Spark: arcs to 2 additional enemies in range." },
   { id: "bloomwing", name: "Bloomwing", title: "Garden Sprite", icon: "🦋", color: "#e982b5", cost: 80, damage: 28, speed: 3, range: 3, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "shieldPierce", skill: "Petal Needle: pierces shields and strikes health directly." },
   { id: "moonowl", name: "Moonowl", title: "Star Watcher", icon: "🦉", color: "#9b88e8", cost: 95, damage: 48, speed: 5, range: 4, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "beam", skill: "Moonbeam: pierces up to 4 enemies with fading damage." },
-  { id: "cinderpup", name: "Cinderpup", title: "Blazing Scout", icon: "🐕", color: "#f36f45", cost: 70, damage: 27, speed: 2, range: 2, rarity: "Rare", tier: 2, ability: "burn", skill: "Bright Kindle: burns for 25% damage over 4 ticks.", evolutionPath: "core", upgradeOf: "emberfox" },
+  { id: "cinderpup", name: "Cinderpup", title: "Blazing Scout", icon: "🐕", color: "#f36f45", cost: 70, damage: 27, speed: 2, range: 2, rarity: "Rare", tier: 2, ability: "burn", skill: "Bright Kindle: burns for 25% damage over 4 ticks.", evolutionPath: "core", upgradeOf: "emberfox", sprite: "./critters/cinderpup-sprite.png" },
   { id: "ripplefin", name: "Ripplefin", title: "River Dancer", icon: "🐠", color: "#3db6df", cost: 82, damage: 18, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "waterSplash", skill: "Ripple Burst: creates a wider splash with stronger secondary damage.", evolutionPath: "core", upgradeOf: "bubblefin" },
   { id: "thornshell", name: "Thornshell", title: "Bramble Bulwark", icon: "🦔", color: "#58a45f", cost: 92, damage: 45, speed: 4, range: 2, rarity: "Rare", tier: 2, ability: "slow", skill: "Bramble Slam: slows enemies by 53% for 5 ticks.", evolutionPath: "core", upgradeOf: "mossback" },
   { id: "voltlynx", name: "Voltlynx", title: "Thunder Prowler", icon: "🐈", color: "#eab72f", cost: 100, damage: 33, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "chain", skill: "Forked Spark: chains to 3 additional enemies with stronger arcs.", evolutionPath: "core", upgradeOf: "sparkit" },
   { id: "briarwing", name: "Briarwing", title: "Thorn Dancer", icon: "🦋", color: "#d95d9d", cost: 105, damage: 40, speed: 3, range: 4, rarity: "Rare", tier: 2, ability: "shieldPierce", skill: "Briar Needle: bypasses shields and deals bonus damage to shielded foes.", evolutionPath: "core", upgradeOf: "bloomwing" },
   { id: "duskowl", name: "Duskowl", title: "Twilight Seer", icon: "🦉", color: "#7967cf", cost: 120, damage: 66, speed: 4, range: 4, rarity: "Rare", tier: 2, ability: "beam", skill: "Duskbeam: pierces 5 enemies and loses less damage between targets.", evolutionPath: "core", upgradeOf: "moonowl" },
-  { id: "embermane", name: "Embermane", title: "Wildfire Heir", icon: "🐺", color: "#f04f45", cost: 112, damage: 40, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "burn", skill: "Wildfire: burns for 30% damage over 5 ticks.", evolutionPath: "core", upgradeOf: "cinderpup" },
+  { id: "embermane", name: "Embermane", title: "Wildfire Heir", icon: "🐺", color: "#f04f45", cost: 112, damage: 40, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "burn", skill: "Wildfire: burns for 30% damage over 5 ticks.", evolutionPath: "core", upgradeOf: "cinderpup", sprite: "./critters/embermane-sprite.png" },
   { id: "tidecaller", name: "Tidecaller", title: "Ocean Oracle", icon: "🐬", color: "#279fd1", cost: 122, damage: 28, speed: 2, range: 4, rarity: "Legendary", tier: 3, ability: "waterSplash", skill: "Tidal Burst: creates the largest splash with powerful secondary damage.", evolutionPath: "core", upgradeOf: "ripplefin" },
   { id: "eldermoss", name: "Eldermoss", title: "Ancient Grove", icon: "🦕", color: "#438f58", cost: 132, damage: 62, speed: 4, range: 2, rarity: "Legendary", tier: 3, ability: "slow", skill: "Worldroot Slam: slows its target by 60% for 6 ticks.", evolutionPath: "core", upgradeOf: "thornshell" },
   { id: "stormsabre", name: "Stormsabre", title: "Skyfang Regent", icon: "🐯", color: "#d99b1f", cost: 138, damage: 48, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "chain", skill: "Tempest Chain: arcs through 5 enemies while retaining most of its power.", evolutionPath: "core", upgradeOf: "voltlynx" },
@@ -69,6 +69,11 @@ const cellStyle = (cell: number) => {
   const point = cellPoint(cell);
   return { left: `${point.x}%`, top: `${point.y}%` } as React.CSSProperties;
 };
+
+function CritterArt({ critter, animated = false, attacking = false }: { critter: Critter; animated?: boolean; attacking?: boolean }) {
+  if (!critter.sprite) return <span className="critterEmoji">{critter.icon}</span>;
+  return <i className={`critterArt ${animated ? "animated" : ""} ${attacking ? "attacking" : ""}`} style={{ backgroundImage: `url(${critter.sprite})` }} role="img" aria-label={critter.name}/>;
+}
 
 export default function Home() {
   const [tab, setTab] = useState<"battle" | "collection" | "statistics" | "summon">("battle");
@@ -481,7 +486,7 @@ export default function Home() {
           <p>Choose from your unlocked starting critters. Each companion grants a different blessing for this adventure.</p>
           <div className="starterChoices">
             {starterChoices.map(c => <button key={c.id} onClick={() => chooseStarter(c.id)} style={{"--accent": c.color} as React.CSSProperties}>
-              <span className="starterPortrait">{c.icon}</span>
+              <span className="starterPortrait"><CritterArt critter={c}/></span>
               <small>{c.title}</small><b>{c.name}</b>
               <em>{starterBlessing(c.id)}</em>
               <strong>Choose {c.name}</strong>
@@ -492,7 +497,7 @@ export default function Home() {
       </div>}
 
       {tab === "battle" && <section className="battlePage">
-        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterBlessing(starterCritter.id)}</small></div>}</div><div className="battleStats"><span className="resourceStat" tabIndex={0} data-tooltip="Objective health. You lose when it reaches zero.">❤️ <b>{lives}</b></span><span className="resourceStat" tabIndex={0} data-tooltip={`Energy places guardians. You have ${energy} of ${maxEnergy}.`}>🔥 <b>{energy}</b></span><span className="resourceStat shardStat" tabIndex={0} data-tooltip="Rare Dewshards come from events. Evolving Tier 1 to Tier 2 costs 1; Tier 2 to Tier 3 costs 2.">💠 <b>{dewshards}</b></span><span className="resourceStat" tabIndex={0} data-tooltip="Current wave in this chapter. Wave 10 is the boss.">🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span><button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
+        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}><CritterArt critter={starterCritter}/></span><small><b>{starterCritter.name}&apos;s blessing</b>{starterBlessing(starterCritter.id)}</small></div>}</div><div className="battleStats"><span className="resourceStat" tabIndex={0} data-tooltip="Objective health. You lose when it reaches zero.">❤️ <b>{lives}</b></span><span className="resourceStat" tabIndex={0} data-tooltip={`Energy places guardians. You have ${energy} of ${maxEnergy}.`}>🔥 <b>{energy}</b></span><span className="resourceStat shardStat" tabIndex={0} data-tooltip="Rare Dewshards come from events. Evolving Tier 1 to Tier 2 costs 1; Tier 2 to Tier 3 costs 2.">💠 <b>{dewshards}</b></span><span className="resourceStat" tabIndex={0} data-tooltip="Current wave in this chapter. Wave 10 is the boss.">🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span><button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
         <div className="gameShell">
           <div className={`field ${activeChapter.theme}`} aria-label={`${activeChapter.region} tower defence battlefield`}>
             <div className="sun"/><div className="cloud cloudOne">☁</div><div className="cloud cloudTwo">☁</div>
@@ -506,7 +511,7 @@ export default function Home() {
             {activeSlots.map((cell, slot) => {
               const tower = towers.find(t => t.slot === slot);
               return <button key={cell} aria-label={tower ? tower.critter.name : "Empty defender stone"} className={`towerSlot ${tower ? "filled" : ""}`} onClick={() => placeTower(slot)} style={{...cellStyle(cell), ...(tower ? {"--critter": tower.critter.color} : {})} as React.CSSProperties}>
-                {tower ? <><span>{tower.critter.icon}</span><small>{tower.critter.name} • T{tower.critter.tier}</small></> : <><span>✦</span><small>PLACE</small></>}
+                {tower ? <><CritterArt critter={tower.critter} animated attacking={attackFx.some(fx => fx.from === cell && fx.critterId === tower.critter.id)}/><small>{tower.critter.name} • T{tower.critter.tier}</small></> : <><span>✦</span><small>PLACE</small></>}
               </button>;
             })}
             {enemies.map(e => { const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy ${e.boss ? "boss" : ""}`} style={cellStyle(p)}>{e.boss && <small>BOSS</small>}<span>{e.icon}</span>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
@@ -522,10 +527,10 @@ export default function Home() {
             <div className="rosterTitle"><b>Your guardians</b><small>Select one to place</small></div>
             <div className="roster">
               {runCritters.map(c => <button key={c.id} className={selected === c.id ? "selected" : ""} onClick={() => setSelected(c.id)}>
-                <span className="portrait" style={{background: c.color}}>{c.icon}</span><span><b>{c.name}</b><small>{c.title}</small></span><em>🔥 {c.cost}</em>
+                <span className="portrait" style={{background: c.color}}><CritterArt critter={c}/></span><span><b>{c.name}</b><small>{c.title}</small></span><em>🔥 {c.cost}</em>
               </button>)}
             </div>
-            <div className="selectedInfo"><span style={{background:selectedCritter.color}}>{selectedCritter.icon}</span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range}</small></div></div>
+            <div className="selectedInfo"><span style={{background:selectedCritter.color}}><CritterArt critter={selectedCritter}/></span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range}</small></div></div>
             <div className="buffPanel"><div className="buffTitle"><b>Run Blessings</b><small>Last until this run ends</small></div>{activeBuffs.length ? <div className="buffList">{activeBuffs.map(blessing => <span key={blessing.name}><i>{blessing.icon}</i><b>{blessing.name}</b><small>{blessing.description}</small></span>)}</div> : <p>No Blessings yet. Event decisions and relics can grant them.</p>}</div>
             {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><span>{enemy.icon}</span><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP{enemy.shield ? ` • ${enemy.shield} shield` : ""} each</small><p>{enemy.ability}</p></div></article>)}</div>}
             {wave > 0 && wave < WAVES_PER_CHAPTER && <div className={`waveCondition ${wave === WAVES_PER_CHAPTER - 1 ? "bossWarning" : ""}`}><small>{wave === WAVES_PER_CHAPTER - 1 ? "BOSS APPROACHING" : "NEXT WAVE"}</small><b>{wave === WAVES_PER_CHAPTER - 1 ? activeChapter.bossName : nextWaveNote}</b></div>}
@@ -552,7 +557,7 @@ export default function Home() {
             <p>Choose one companion. They will remain in your battle roster until this adventure ends.</p>
             <div className="starterChoices recruitChoices">
               {recruitChoices.map(c => <button key={c.id} onClick={() => recruitGuardian(c.id)} style={{"--accent":c.color} as React.CSSProperties}>
-                <span className="starterPortrait">{c.icon}</span><small>{c.rarity} • COST {c.cost}</small><b>{c.name}</b><em>{c.skill}</em><strong>Recruit for this run</strong>
+                <span className="starterPortrait"><CritterArt critter={c}/></span><small>{c.rarity} • COST {c.cost}</small><b>{c.name}</b><em>{c.skill}</em><strong>Recruit for this run</strong>
               </button>)}
             </div>
           </section>
@@ -572,7 +577,7 @@ export default function Home() {
         {inspectedTower && <div className="choiceOverlay towerInfoOverlay" role="dialog" aria-modal="true" aria-labelledby="tower-info-title">
           <section className="choicePanel towerInfoPanel" style={{"--accent": inspectedTower.critter.color} as React.CSSProperties}>
             <button className="closeInfo" onClick={closeTowerInfo} aria-label="Close tower information">×</button>
-            <span className="towerInfoPortrait">{inspectedTower.critter.icon}</span><span className="eyebrow">PLACED GUARDIAN • {inspectedTower.critter.rarity} • TIER {inspectedTower.critter.tier}</span>
+            <span className="towerInfoPortrait"><CritterArt critter={inspectedTower.critter}/></span><span className="eyebrow">PLACED GUARDIAN • {inspectedTower.critter.rarity} • TIER {inspectedTower.critter.tier}</span>
             <h1 id="tower-info-title">{inspectedTower.critter.name}</h1>
             <p>{inspectedTower.critter.title}</p>
             <div className="towerStatsGrid">
@@ -605,7 +610,7 @@ export default function Home() {
         <div className="evolutionGuide"><span><b>Tier 1</b> Base forms and starting guardians</span><i>→ 💠 1</i><span><b>Tier 2</b> Evolved forms with stronger abilities</span><i>→ 💠 2</i><span><b>Tier 3</b> Final core evolutions</span><em>Place a guardian, select it, and spend Dewshards to evolve it during that run. Epic sidegrade paths will arrive later.</em></div>
         <div className="progressCard"><div><span>✿</span><b>{owned.length} of {CRITTERS.length} discovered</b></div><div className="progress"><i style={{width:`${owned.length/CRITTERS.length*100}%`}}/></div></div>
         <div className="cards">{CRITTERS.map((c, i) => { const unlocked = owned.includes(c.id); const baseCritter = c.upgradeOf ? CRITTERS.find(base => base.id === c.upgradeOf) : null; return <article key={c.id} className={!unlocked ? "locked" : ""} style={{"--accent": c.color} as React.CSSProperties}>
-          <div className="cardTop"><small>NO. {String(i + 1).padStart(3, "0")}</small><span>{c.rarity} • TIER {c.tier}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.upgradeOf ? c.evolutionPath === "alternative" ? `An alternative form of ${baseCritter?.name || "a guardian"} waits in the Wish Pond…` : `Evolve ${baseCritter?.name || "the previous form"} during a run to discover this form…` : c.starterEligible ? "An unlockable starting guardian waits in the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ Evolves from {baseCritter.name}</span>}{c.evolutionPath === "alternative" && <span>✦ Alternative path</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span>{c.tier === 1 && <span>🔥 {c.cost}</span>}</div>}
+          <div className="cardTop"><small>NO. {String(i + 1).padStart(3, "0")}</small><span>{c.rarity} • TIER {c.tier}</span></div><div className="bigCritter">{unlocked ? <CritterArt critter={c}/> : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.upgradeOf ? c.evolutionPath === "alternative" ? `An alternative form of ${baseCritter?.name || "a guardian"} waits in the Wish Pond…` : `Evolve ${baseCritter?.name || "the previous form"} during a run to discover this form…` : c.starterEligible ? "An unlockable starting guardian waits in the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ Evolves from {baseCritter.name}</span>}{c.evolutionPath === "alternative" && <span>✦ Alternative path</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span>{c.tier === 1 && <span>🔥 {c.cost}</span>}</div>}
         </article>; })}</div>
       </section>}
 
@@ -619,14 +624,14 @@ export default function Home() {
         </div>
         <div className="starterRecords">
           {CRITTERS.filter(c => c.starterEligible).map(critter => { const record = stats[critter.id] || emptyStarterStats()[critter.id]; const unlocked = !critter.wishOnly || owned.includes(critter.id); const winRate = record.runs ? Math.round(record.victories / record.runs * 100) : 0; return <article key={critter.id} className={!unlocked ? "lockedRecord" : ""} style={{"--accent": critter.color} as React.CSSProperties}>
-            <div className="recordGuardian"><span style={{background:unlocked ? critter.color : "#b8b9ae"}}>{unlocked ? critter.icon : "?"}</span><div><small>{unlocked ? "STARTING GUARDIAN" : "WISH POND STARTER"}</small><h2>{unlocked ? critter.name : "Undiscovered"}</h2><p>{unlocked ? critter.title : "Unlock to choose for a future run"}</p></div></div>
+            <div className="recordGuardian"><span style={{background:unlocked ? critter.color : "#b8b9ae"}}>{unlocked ? <CritterArt critter={critter}/> : "?"}</span><div><small>{unlocked ? "STARTING GUARDIAN" : "WISH POND STARTER"}</small><h2>{unlocked ? critter.name : "Undiscovered"}</h2><p>{unlocked ? critter.title : "Unlock to choose for a future run"}</p></div></div>
             <div className="recordNumbers"><span><b>{record.runs}</b><small>Runs</small></span><span><b>{record.victories}</b><small>Victories</small></span><span><b>{winRate}%</b><small>Win rate</small></span><span><b>{record.highestChapter || "—"}</b><small>Best chapter</small></span><span><b>{record.bossesDefeated}</b><small>Bosses</small></span><span><b>{record.wavesCleared}</b><small>Waves</small></span></div>
           </article>; })}
         </div>
       </section>}
 
       {tab === "summon" && <section className="summonPage">
-        <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><span>{summoned.icon}</span><small>Tier {summoned.tier} {summoned.evolutionPath === "alternative" ? "alternative form" : "friend"}</small><h2>{summoned.name}</h2><p>{summoned.skill}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
+        <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><CritterArt critter={summoned}/><small>Tier {summoned.tier} {summoned.evolutionPath === "alternative" ? "alternative form" : "friend"}</small><h2>{summoned.name}</h2><p>{summoned.skill}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
         <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>The Wish Pond unlocks new Tier 1 guardians and alternative Tier 2 forms. After an alternative form is discovered, it appears beside the normal evolution when you select its placed Tier 1 guardian. Normal evolutions never require a Wish Pond unlock. Duplicates return 35 petals.</p><div className="odds"><span>Tier 1 guardians <b>Base forms</b></span><span>Alternative Tier 2 <b>Wish unlocks</b></span></div><small className="futurePath">Alternative forms are balanced sidegrades with different strengths, not automatic replacements.</small><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
       </section>}
       <footer><span>Prototype meadow • Progress saves on this device</span><span>Made with a little magic ✦</span></footer>
