@@ -5,11 +5,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type Critter = {
   id: string; name: string; title: string; icon: string; color: string;
   cost: number; damage: number; speed: number; range: number; rarity: string; skill: string;
-  ability: "burn" | "pierce" | "slow" | "chain" | "splash" | "beam";
+  ability: "burn" | "waterSplash" | "slow" | "chain" | "shieldPierce" | "beam";
   wishOnly?: boolean; upgradeOf?: string;
 };
 
-type Enemy = { id: number; step: number; hp: number; maxHp: number; kind: string; icon: string; boss?: boolean; burnTicks?: number; burnDamage?: number; slowTicks?: number; slowFactor?: number };
+type Enemy = { id: number; step: number; hp: number; maxHp: number; shield: number; maxShield: number; kind: string; icon: string; boss?: boolean; burnTicks?: number; burnDamage?: number; slowTicks?: number; slowFactor?: number };
 type Tower = { slot: number; critter: Critter; cooldown: number; level: number };
 type EventChoice = "harvest" | "spring" | "warden";
 type BossReward = "heartseed" | "embercore" | "starcharm";
@@ -20,13 +20,13 @@ type ChapterConfig = { number: number; region: string; title: string; theme: str
 
 const CRITTERS: Critter[] = [
   { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", ability: "burn", skill: "Kindle: burns its target for 20% damage over 3 ticks." },
-  { id: "bubblefin", name: "Bubblefin", title: "Puddle Pal", icon: "🐟", color: "#54bde8", cost: 55, damage: 12, speed: 3, range: 3, rarity: "Common", ability: "pierce", skill: "Bubble Lance: pierces the target and 2 enemies behind it." },
+  { id: "bubblefin", name: "Bubblefin", title: "Puddle Pal", icon: "🐟", color: "#54bde8", cost: 55, damage: 12, speed: 3, range: 3, rarity: "Common", ability: "waterSplash", skill: "Bubble Burst: splashes its target and nearby enemies." },
   { id: "mossback", name: "Mossback", title: "Gentle Guard", icon: "🐢", color: "#6fc174", cost: 65, damage: 32, speed: 5, range: 1, rarity: "Rare", ability: "slow", skill: "Root Slam: slows its target by 45% for 4 ticks." },
   { id: "sparkit", name: "Sparkit", title: "Storm Kitten", icon: "🐱", color: "#f5c84b", cost: 75, damage: 23, speed: 3, range: 2, rarity: "Rare", ability: "chain", skill: "Chain Spark: arcs to 2 additional enemies in range." },
-  { id: "bloomwing", name: "Bloomwing", title: "Garden Sprite", icon: "🦋", color: "#e982b5", cost: 80, damage: 28, speed: 3, range: 3, rarity: "Epic", ability: "splash", skill: "Petal Burst: damages enemies clustered around its target." },
+  { id: "bloomwing", name: "Bloomwing", title: "Garden Sprite", icon: "🦋", color: "#e982b5", cost: 80, damage: 28, speed: 3, range: 3, rarity: "Epic", ability: "shieldPierce", skill: "Petal Needle: pierces shields and strikes health directly." },
   { id: "moonowl", name: "Moonowl", title: "Star Watcher", icon: "🦉", color: "#9b88e8", cost: 95, damage: 48, speed: 5, range: 4, rarity: "Epic", ability: "beam", skill: "Moonbeam: pierces up to 4 enemies with fading damage." },
   { id: "embermane", name: "Embermane", title: "Wildfire Heir", icon: "🐺", color: "#f04f45", cost: 105, damage: 34, speed: 2, range: 3, rarity: "Legendary", ability: "burn", skill: "Wildfire: burns for 30% damage over 5 ticks.", wishOnly: true, upgradeOf: "emberfox" },
-  { id: "tidecaller", name: "Tidecaller", title: "Ocean Oracle", icon: "🐬", color: "#279fd1", cost: 110, damage: 24, speed: 2, range: 4, rarity: "Legendary", ability: "pierce", skill: "Tidal Lance: pierces the target and 3 enemies behind it.", wishOnly: true, upgradeOf: "bubblefin" },
+  { id: "tidecaller", name: "Tidecaller", title: "Ocean Oracle", icon: "🐬", color: "#279fd1", cost: 110, damage: 24, speed: 2, range: 4, rarity: "Legendary", ability: "waterSplash", skill: "Tidal Burst: creates a larger, stronger splash around its target.", wishOnly: true, upgradeOf: "bubblefin" },
   { id: "eldermoss", name: "Eldermoss", title: "Ancient Grove", icon: "🦕", color: "#438f58", cost: 120, damage: 58, speed: 4, range: 2, rarity: "Legendary", ability: "slow", skill: "Worldroot Slam: slows its target by 60% for 6 ticks.", wishOnly: true, upgradeOf: "mossback" },
 ];
 
@@ -136,7 +136,8 @@ export default function Home() {
         const boss = wave === WAVES_PER_CHAPTER && spawnQueue.current === 1;
         const tough = !boss && difficultyWave >= 3 && spawnQueue.current % 4 === 0;
         const hp = Math.round((boss ? 1200 + chapter * 800 : 58 + difficultyWave * 18 + (tough ? 55 : 0)) * waveHpMultiplier.current);
-        setEnemies(es => [...es, { id: enemyId.current++, step: 0, hp, maxHp: hp, kind: boss ? activeChapter.bossName : tough ? "Bramble Brute" : "Gloomling", icon: boss ? activeChapter.bossIcon : tough ? "👹" : "👾", boss }]);
+        const shield = Math.round(hp * (boss ? 0.2 : tough ? 0.35 : 0));
+        setEnemies(es => [...es, { id: enemyId.current++, step: 0, hp, maxHp: hp, shield, maxShield: shield, kind: boss ? activeChapter.bossName : tough ? "Bramble Brute" : "Gloomling", icon: boss ? activeChapter.bossIcon : tough ? "👹" : "👾", boss }]);
         spawnQueue.current--;
         spawnTimer.current = 4;
       }
@@ -148,7 +149,8 @@ export default function Home() {
           const burnDamage = burning ? e.burnDamage || 0 : 0;
           const currentCell = activePath[Math.min(activePath.length - 1, Math.floor(e.step))];
           if (burnDamage) addCombatNumber(currentCell, burnDamage, "damage");
-          return { ...e, hp: e.hp - burnDamage, burnTicks: Math.max(0, (e.burnTicks || 0) - 1), step: e.step + 0.14 * ((e.slowTicks || 0) > 0 ? 1 - (e.slowFactor || 0.45) : 1), slowTicks: Math.max(0, (e.slowTicks || 0) - 1) };
+          const shieldDamage = Math.min(e.shield, burnDamage);
+          return { ...e, shield: e.shield - shieldDamage, hp: e.hp - (burnDamage - shieldDamage), burnTicks: Math.max(0, (e.burnTicks || 0) - 1), step: e.step + 0.14 * ((e.slowTicks || 0) > 0 ? 1 - (e.slowFactor || 0.45) : 1), slowTicks: Math.max(0, (e.slowTicks || 0) - 1) };
         });
         const escaped = next.filter(e => e.hp > 0 && e.step >= activePath.length - 1);
         if (escaped.length) setLives(v => Math.max(0, v - escaped.length));
@@ -172,13 +174,13 @@ export default function Home() {
             const upgradeMultiplier = 1 + (t.level - 1) * 0.35;
             const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current * upgradeMultiplier);
             let hits: { enemy: Enemy; multiplier: number }[] = [{ enemy: target, multiplier: 1 }];
-            if (t.critter.ability === "pierce") {
-              const limit = t.critter.id === "tidecaller" ? 4 : 3;
-              hits = sortedTargets.slice(0, limit).map((enemy, index) => ({ enemy, multiplier: Math.max(0.45, 1 - index * 0.2) }));
+            if (t.critter.ability === "waterSplash") {
+              const splashRadius = t.critter.id === "tidecaller" ? 2.3 : 1.6;
+              const splashLimit = t.critter.id === "tidecaller" ? 6 : 4;
+              const splashDamage = t.critter.id === "tidecaller" ? 0.8 : 0.65;
+              hits = sortedTargets.filter(enemy => Math.abs(enemy.step - target.step) <= splashRadius).slice(0, splashLimit).map((enemy, index) => ({ enemy, multiplier: index ? splashDamage : 1 }));
             } else if (t.critter.ability === "chain") {
               hits = sortedTargets.slice(0, 3).map((enemy, index) => ({ enemy, multiplier: index ? 0.65 : 1 }));
-            } else if (t.critter.ability === "splash") {
-              hits = sortedTargets.filter(enemy => Math.abs(enemy.step - target.step) <= 1.6).slice(0, 5).map((enemy, index) => ({ enemy, multiplier: index ? 0.7 : 1 }));
             } else if (t.critter.ability === "beam") {
               hits = sortedTargets.slice(0, 4).map((enemy, index) => ({ enemy, multiplier: 1 - index * 0.18 }));
             }
@@ -194,7 +196,13 @@ export default function Home() {
             hits.forEach(hit => {
               const damage = Math.round(baseDamage * hit.multiplier);
               const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(hit.enemy.step))];
-              hit.enemy.hp -= damage;
+              if (t.critter.ability === "shieldPierce") {
+                hit.enemy.hp -= damage;
+              } else {
+                const shieldDamage = Math.min(hit.enemy.shield, damage);
+                hit.enemy.shield -= shieldDamage;
+                hit.enemy.hp -= damage - shieldDamage;
+              }
               const fxId = attackId.current++;
               newEffects.push({ id: fxId, from: slotCell, to: targetCell, color: t.critter.color, critterId: t.critter.id });
               addCombatNumber(targetCell, damage, "damage");
@@ -256,10 +264,10 @@ export default function Home() {
   const upcomingBrutes = upcomingWave === WAVES_PER_CHAPTER || upcomingDifficulty < 3 ? 0 : Array.from({ length: upcomingCount }, (_, index) => upcomingCount - index).filter(queue => queue % 4 === 0).length;
   const upcomingNormalHp = Math.round((58 + upcomingDifficulty * 18) * waveHpMultiplier.current);
   const upcomingEnemyIntel = upcomingWave === WAVES_PER_CHAPTER
-    ? [{ icon: activeChapter.bossIcon, name: activeChapter.bossName, count: 1, hp: Math.round((1200 + chapter * 800) * waveHpMultiplier.current), ability: "Colossal: immense health and a full path to your objective." }]
+    ? [{ icon: activeChapter.bossIcon, name: activeChapter.bossName, count: 1, hp: Math.round((1200 + chapter * 800) * waveHpMultiplier.current), shield: Math.round((1200 + chapter * 800) * waveHpMultiplier.current * 0.2), ability: "Royal Ward: colossal health protected by a 20% shield." }]
     : [
-        { icon: "👾", name: "Gloomling", count: upcomingCount - upcomingBrutes, hp: upcomingNormalHp, ability: "Skitter: steady movement with no armour." },
-        ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), ability: "Barkhide: 55 additional health." }] : []),
+        { icon: "👾", name: "Gloomling", count: upcomingCount - upcomingBrutes, hp: upcomingNormalHp, shield: 0, ability: "Skitter: steady movement with no armour." },
+        ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), shield: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current * 0.35), ability: "Barkshield: protected by a shield equal to 35% of its health." }] : []),
       ];
   const activeBuffs = [
     eventBuffs.harvest ? { icon: "🌸", name: `Moonbloom Covenant ×${eventBuffs.harvest}`, description: `+${eventBuffs.harvest * 5} petals after every wave` } : null,
@@ -486,7 +494,7 @@ export default function Home() {
                 {tower ? <><span>{tower.critter.icon}</span><small>{tower.critter.name} • L{tower.level}</small></> : <><span>✦</span><small>PLACE</small></>}
               </button>;
             })}
-            {enemies.map(e => { const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy ${e.boss ? "boss" : ""}`} style={cellStyle(p)}>{e.boss && <small>BOSS</small>}<span>{e.icon}</span><i><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
+            {enemies.map(e => { const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy ${e.boss ? "boss" : ""}`} style={cellStyle(p)}>{e.boss && <small>BOSS</small>}<span>{e.icon}</span>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
             {attackFx.map(fx => {
               const from = cellPoint(fx.from); const to = cellPoint(fx.to);
               return <i key={fx.id} className={`attackFx fx-${fx.critterId}`} style={{"--from-x":`${from.x}%`,"--from-y":`${from.y}%`,"--to-x":`${to.x}%`,"--to-y":`${to.y}%`,"--fx-color":fx.color} as React.CSSProperties}><b/></i>;
@@ -504,7 +512,7 @@ export default function Home() {
             </div>
             <div className="selectedInfo"><span style={{background:selectedCritter.color}}>{selectedCritter.icon}</span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range}</small></div></div>
             <div className="buffPanel"><div className="buffTitle"><b>Run Blessings</b><small>Last until this run ends</small></div>{activeBuffs.length ? <div className="buffList">{activeBuffs.map(blessing => <span key={blessing.name}><i>{blessing.icon}</i><b>{blessing.name}</b><small>{blessing.description}</small></span>)}</div> : <p>No Blessings yet. Event decisions and relics can grant them.</p>}</div>
-            {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><span>{enemy.icon}</span><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP each</small><p>{enemy.ability}</p></div></article>)}</div>}
+            {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><span>{enemy.icon}</span><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP{enemy.shield ? ` • ${enemy.shield} shield` : ""} each</small><p>{enemy.ability}</p></div></article>)}</div>}
             {wave > 0 && wave < WAVES_PER_CHAPTER && <div className={`waveCondition ${wave === WAVES_PER_CHAPTER - 1 ? "bossWarning" : ""}`}><small>{wave === WAVES_PER_CHAPTER - 1 ? "BOSS APPROACHING" : "NEXT WAVE"}</small><b>{wave === WAVES_PER_CHAPTER - 1 ? activeChapter.bossName : nextWaveNote}</b></div>}
             {lives > 0 ? <button className="primary" disabled={running || wave >= WAVES_PER_CHAPTER || eventOpen || recruitChoices.length > 0 || bossRewardOpen || adventureComplete || !starterId} onClick={startWave}>{running ? paused ? "Battle paused" : wave === WAVES_PER_CHAPTER ? "Boss battle in progress…" : "Wave in progress…" : recruitChoices.length ? "Recruit a guardian" : eventOpen ? "Choose a forest event" : bossRewardOpen ? "Choose your boss reward" : adventureComplete ? "Adventure complete!" : wave >= WAVES_PER_CHAPTER ? `${activeChapter.region} protected!` : wave === WAVES_PER_CHAPTER - 1 ? `Challenge ${activeChapter.bossName}` : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Choose a new starter</button>}
             {wave > 0 && !running && <button className="textButton" onClick={resetBattle}>Restart with a new starter</button>}
