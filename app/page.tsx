@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type Critter = {
   id: string; name: string; title: string; icon: string; color: string;
-  cost: number; damage: number; speed: number; range: number; rarity: string; skill: string;
+  cost: number; damage: number; speed: number; range: number; rarity: "Common" | "Rare" | "Epic" | "Legendary"; skill: string;
   ability: "burn" | "waterSplash" | "slow" | "chain" | "shieldPierce" | "beam";
-  wishOnly?: boolean; upgradeOf?: string;
+  tier: 1 | 2 | 3; starterEligible?: boolean; wishOnly?: boolean; upgradeOf?: string;
 };
 
 type Enemy = { id: number; step: number; hp: number; maxHp: number; shield: number; maxShield: number; kind: string; icon: string; boss?: boolean; burnTicks?: number; burnDamage?: number; slowTicks?: number; slowFactor?: number };
@@ -19,20 +19,31 @@ type StarterStats = { runs: number; victories: number; bossesDefeated: number; w
 type ChapterConfig = { number: number; region: string; title: string; theme: string; path: number[]; slots: number[]; bossName: string; bossIcon: string; goalIcon: string; goalName: string };
 
 const CRITTERS: Critter[] = [
-  { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", ability: "burn", skill: "Kindle: burns its target for 20% damage over 3 ticks." },
-  { id: "bubblefin", name: "Bubblefin", title: "Puddle Pal", icon: "🐟", color: "#54bde8", cost: 55, damage: 12, speed: 3, range: 3, rarity: "Common", ability: "waterSplash", skill: "Bubble Burst: splashes its target and nearby enemies." },
-  { id: "mossback", name: "Mossback", title: "Gentle Guard", icon: "🐢", color: "#6fc174", cost: 65, damage: 32, speed: 5, range: 1, rarity: "Rare", ability: "slow", skill: "Root Slam: slows its target by 45% for 4 ticks." },
-  { id: "sparkit", name: "Sparkit", title: "Storm Kitten", icon: "🐱", color: "#f5c84b", cost: 75, damage: 23, speed: 3, range: 2, rarity: "Rare", ability: "chain", skill: "Chain Spark: arcs to 2 additional enemies in range." },
-  { id: "bloomwing", name: "Bloomwing", title: "Garden Sprite", icon: "🦋", color: "#e982b5", cost: 80, damage: 28, speed: 3, range: 3, rarity: "Epic", ability: "shieldPierce", skill: "Petal Needle: pierces shields and strikes health directly." },
-  { id: "moonowl", name: "Moonowl", title: "Star Watcher", icon: "🦉", color: "#9b88e8", cost: 95, damage: 48, speed: 5, range: 4, rarity: "Epic", ability: "beam", skill: "Moonbeam: pierces up to 4 enemies with fading damage." },
-  { id: "embermane", name: "Embermane", title: "Wildfire Heir", icon: "🐺", color: "#f04f45", cost: 105, damage: 34, speed: 2, range: 3, rarity: "Legendary", ability: "burn", skill: "Wildfire: burns for 30% damage over 5 ticks.", wishOnly: true, upgradeOf: "emberfox" },
-  { id: "tidecaller", name: "Tidecaller", title: "Ocean Oracle", icon: "🐬", color: "#279fd1", cost: 110, damage: 24, speed: 2, range: 4, rarity: "Legendary", ability: "waterSplash", skill: "Tidal Burst: creates a larger, stronger splash around its target.", wishOnly: true, upgradeOf: "bubblefin" },
-  { id: "eldermoss", name: "Eldermoss", title: "Ancient Grove", icon: "🦕", color: "#438f58", cost: 120, damage: 58, speed: 4, range: 2, rarity: "Legendary", ability: "slow", skill: "Worldroot Slam: slows its target by 60% for 6 ticks.", wishOnly: true, upgradeOf: "mossback" },
+  { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", tier: 1, starterEligible: true, ability: "burn", skill: "Kindle: burns its target for 20% damage over 3 ticks." },
+  { id: "bubblefin", name: "Bubblefin", title: "Puddle Pal", icon: "🐟", color: "#54bde8", cost: 55, damage: 12, speed: 3, range: 3, rarity: "Common", tier: 1, starterEligible: true, ability: "waterSplash", skill: "Bubble Burst: splashes its target and nearby enemies." },
+  { id: "mossback", name: "Mossback", title: "Gentle Guard", icon: "🐢", color: "#6fc174", cost: 65, damage: 32, speed: 5, range: 1, rarity: "Common", tier: 1, starterEligible: true, ability: "slow", skill: "Root Slam: slows its target by 45% for 4 ticks." },
+  { id: "sparkit", name: "Sparkit", title: "Storm Kitten", icon: "🐱", color: "#f5c84b", cost: 75, damage: 23, speed: 3, range: 2, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "chain", skill: "Chain Spark: arcs to 2 additional enemies in range." },
+  { id: "bloomwing", name: "Bloomwing", title: "Garden Sprite", icon: "🦋", color: "#e982b5", cost: 80, damage: 28, speed: 3, range: 3, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "shieldPierce", skill: "Petal Needle: pierces shields and strikes health directly." },
+  { id: "moonowl", name: "Moonowl", title: "Star Watcher", icon: "🦉", color: "#9b88e8", cost: 95, damage: 48, speed: 5, range: 4, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "beam", skill: "Moonbeam: pierces up to 4 enemies with fading damage." },
+  { id: "cinderpup", name: "Cinderpup", title: "Blazing Scout", icon: "🐕", color: "#f36f45", cost: 70, damage: 27, speed: 2, range: 2, rarity: "Rare", tier: 2, ability: "burn", skill: "Bright Kindle: burns for 25% damage over 4 ticks.", wishOnly: true, upgradeOf: "emberfox" },
+  { id: "ripplefin", name: "Ripplefin", title: "River Dancer", icon: "🐠", color: "#3db6df", cost: 82, damage: 18, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "waterSplash", skill: "Ripple Burst: creates a wider splash with stronger secondary damage.", wishOnly: true, upgradeOf: "bubblefin" },
+  { id: "thornshell", name: "Thornshell", title: "Bramble Bulwark", icon: "🦔", color: "#58a45f", cost: 92, damage: 45, speed: 4, range: 2, rarity: "Rare", tier: 2, ability: "slow", skill: "Bramble Slam: slows enemies by 53% for 5 ticks.", wishOnly: true, upgradeOf: "mossback" },
+  { id: "voltlynx", name: "Voltlynx", title: "Thunder Prowler", icon: "🐈", color: "#eab72f", cost: 100, damage: 33, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "chain", skill: "Forked Spark: chains to 3 additional enemies with stronger arcs.", wishOnly: true, upgradeOf: "sparkit" },
+  { id: "briarwing", name: "Briarwing", title: "Thorn Dancer", icon: "🦋", color: "#d95d9d", cost: 105, damage: 40, speed: 3, range: 4, rarity: "Rare", tier: 2, ability: "shieldPierce", skill: "Briar Needle: bypasses shields and deals bonus damage to shielded foes.", wishOnly: true, upgradeOf: "bloomwing" },
+  { id: "duskowl", name: "Duskowl", title: "Twilight Seer", icon: "🦉", color: "#7967cf", cost: 120, damage: 66, speed: 4, range: 4, rarity: "Rare", tier: 2, ability: "beam", skill: "Duskbeam: pierces 5 enemies and loses less damage between targets.", wishOnly: true, upgradeOf: "moonowl" },
+  { id: "embermane", name: "Embermane", title: "Wildfire Heir", icon: "🐺", color: "#f04f45", cost: 112, damage: 40, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "burn", skill: "Wildfire: burns for 30% damage over 5 ticks.", wishOnly: true, upgradeOf: "cinderpup" },
+  { id: "tidecaller", name: "Tidecaller", title: "Ocean Oracle", icon: "🐬", color: "#279fd1", cost: 122, damage: 28, speed: 2, range: 4, rarity: "Legendary", tier: 3, ability: "waterSplash", skill: "Tidal Burst: creates the largest splash with powerful secondary damage.", wishOnly: true, upgradeOf: "ripplefin" },
+  { id: "eldermoss", name: "Eldermoss", title: "Ancient Grove", icon: "🦕", color: "#438f58", cost: 132, damage: 62, speed: 4, range: 2, rarity: "Legendary", tier: 3, ability: "slow", skill: "Worldroot Slam: slows its target by 60% for 6 ticks.", wishOnly: true, upgradeOf: "thornshell" },
+  { id: "stormsabre", name: "Stormsabre", title: "Skyfang Regent", icon: "🐯", color: "#d99b1f", cost: 138, damage: 48, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "chain", skill: "Tempest Chain: arcs through 5 enemies while retaining most of its power.", wishOnly: true, upgradeOf: "voltlynx" },
+  { id: "crownwing", name: "Crownwing", title: "Royal Petalblade", icon: "🦚", color: "#bd4b91", cost: 142, damage: 58, speed: 3, range: 4, rarity: "Legendary", tier: 3, ability: "shieldPierce", skill: "Crown Needle: ignores shields and punishes shielded enemies for 30% bonus damage.", wishOnly: true, upgradeOf: "briarwing" },
+  { id: "celestowl", name: "Celestowl", title: "Astral Witness", icon: "🦅", color: "#6552bb", cost: 155, damage: 86, speed: 4, range: 5, rarity: "Legendary", tier: 3, ability: "beam", skill: "Starfall Beam: pierces 6 enemies with only slight damage falloff.", wishOnly: true, upgradeOf: "duskowl" },
 ];
 
 const BOARD_SIZE = 8;
 const WAVES_PER_CHAPTER = 10;
-const emptyStarterStats = (): Record<string, StarterStats> => Object.fromEntries(CRITTERS.slice(0, 3).map(c => [c.id, { runs: 0, victories: 0, bossesDefeated: 0, wavesCleared: 0, highestChapter: 0 }]));
+const STARTER_IDS = CRITTERS.filter(c => c.starterEligible).map(c => c.id);
+const starterBlessing = (id: string) => id === "emberfox" ? "+30 starting energy" : id === "bubblefin" ? "+3 Heart Tree health" : id === "mossback" ? "+15% guardian damage" : id === "sparkit" ? "+1 attack speed for all guardians" : id === "bloomwing" ? "Enemy shields are 25% weaker" : "+1 range for all guardians";
+const emptyStarterStats = (): Record<string, StarterStats> => Object.fromEntries(STARTER_IDS.map(id => [id, { runs: 0, victories: 0, bossesDefeated: 0, wavesCleared: 0, highestChapter: 0 }]));
 const CHAPTERS: ChapterConfig[] = [
   {
     number: 1, region: "Sundew Meadow", title: "Whispers in the Clover", theme: "chapter-one",
@@ -136,7 +147,7 @@ export default function Home() {
         const boss = wave === WAVES_PER_CHAPTER && spawnQueue.current === 1;
         const tough = !boss && difficultyWave >= 3 && spawnQueue.current % 4 === 0;
         const hp = Math.round((boss ? 1200 + chapter * 800 : 58 + difficultyWave * 18 + (tough ? 55 : 0)) * waveHpMultiplier.current);
-        const shield = Math.round(hp * (boss ? 0.2 : tough ? 0.35 : 0));
+        const shield = Math.round(hp * (boss ? 0.2 : tough ? 0.35 : 0) * (starterId === "bloomwing" ? 0.75 : 1));
         setEnemies(es => [...es, { id: enemyId.current++, step: 0, hp, maxHp: hp, shield, maxShield: shield, kind: boss ? activeChapter.bossName : tough ? "Bramble Brute" : "Gloomling", icon: boss ? activeChapter.bossIcon : tough ? "👹" : "👾", boss }]);
         spawnQueue.current--;
         spawnTimer.current = 4;
@@ -164,7 +175,7 @@ export default function Home() {
             const targetCell = activePath[Math.floor(e.step)];
             const columnGap = targetCell % BOARD_SIZE - slotCell % BOARD_SIZE;
             const rowGap = Math.floor(targetCell / BOARD_SIZE) - Math.floor(slotCell / BOARD_SIZE);
-            const upgradedRange = t.critter.range + (t.level >= 3 ? 1 : 0);
+            const upgradedRange = t.critter.range + (t.level >= 3 ? 1 : 0) + (starterId === "moonowl" ? 1 : 0);
             return Math.hypot(columnGap, rowGap) <= upgradedRange + 0.65;
           })());
           const sortedTargets = targets.sort((a,b) => b.step - a.step);
@@ -173,28 +184,30 @@ export default function Home() {
             const starterBoost = starterId === "mossback" ? 1.15 : 1;
             const upgradeMultiplier = 1 + (t.level - 1) * 0.35;
             const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current * upgradeMultiplier);
+            const abilityRank = t.critter.tier - 1;
             let hits: { enemy: Enemy; multiplier: number }[] = [{ enemy: target, multiplier: 1 }];
             if (t.critter.ability === "waterSplash") {
-              const splashRadius = t.critter.id === "tidecaller" ? 2.3 : 1.6;
-              const splashLimit = t.critter.id === "tidecaller" ? 6 : 4;
-              const splashDamage = t.critter.id === "tidecaller" ? 0.8 : 0.65;
+              const splashRadius = 1.6 + abilityRank * 0.35;
+              const splashLimit = 4 + abilityRank;
+              const splashDamage = 0.65 + abilityRank * 0.075;
               hits = sortedTargets.filter(enemy => Math.abs(enemy.step - target.step) <= splashRadius).slice(0, splashLimit).map((enemy, index) => ({ enemy, multiplier: index ? splashDamage : 1 }));
             } else if (t.critter.ability === "chain") {
-              hits = sortedTargets.slice(0, 3).map((enemy, index) => ({ enemy, multiplier: index ? 0.65 : 1 }));
+              hits = sortedTargets.slice(0, 3 + abilityRank).map((enemy, index) => ({ enemy, multiplier: index ? 0.65 + abilityRank * 0.075 : 1 }));
             } else if (t.critter.ability === "beam") {
-              hits = sortedTargets.slice(0, 4).map((enemy, index) => ({ enemy, multiplier: 1 - index * 0.18 }));
+              hits = sortedTargets.slice(0, 4 + abilityRank).map((enemy, index) => ({ enemy, multiplier: Math.max(0.4, 1 - index * (0.18 - abilityRank * 0.03)) }));
             }
             if (t.critter.ability === "burn") {
-              target.burnTicks = Math.max(target.burnTicks || 0, t.critter.id === "embermane" ? 5 : 3);
-              target.burnDamage = Math.max(target.burnDamage || 0, Math.round(baseDamage * (t.critter.id === "embermane" ? 0.3 : 0.2)));
+              target.burnTicks = Math.max(target.burnTicks || 0, 3 + abilityRank);
+              target.burnDamage = Math.max(target.burnDamage || 0, Math.round(baseDamage * (0.2 + abilityRank * 0.05)));
             } else if (t.critter.ability === "slow") {
-              target.slowTicks = Math.max(target.slowTicks || 0, t.critter.id === "eldermoss" ? 6 : 4);
-              target.slowFactor = Math.max(target.slowFactor || 0, t.critter.id === "eldermoss" ? 0.6 : 0.45);
+              target.slowTicks = Math.max(target.slowTicks || 0, 4 + abilityRank);
+              target.slowFactor = Math.max(target.slowFactor || 0, 0.45 + abilityRank * 0.075);
             }
             fired.push(t.slot);
             const newEffects: AttackFx[] = [];
             hits.forEach(hit => {
-              const damage = Math.round(baseDamage * hit.multiplier);
+              const shieldPierceBonus = t.critter.ability === "shieldPierce" && hit.enemy.shield > 0 ? 1 + abilityRank * 0.15 : 1;
+              const damage = Math.round(baseDamage * hit.multiplier * shieldPierceBonus);
               const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(hit.enemy.step))];
               if (t.critter.ability === "shieldPierce") {
                 hit.enemy.hp -= damage;
@@ -211,7 +224,7 @@ export default function Home() {
             setAttackFx(fx => [...fx, ...newEffects]);
           }
         });
-        if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: t.critter.speed } : t));
+        if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: Math.max(1, t.critter.speed - (starterId === "sparkit" ? 1 : 0)) } : t));
         const defeated = next.filter(e => e.hp <= 0).length;
         if (defeated) setEnergy(v => Math.min(maxEnergy, v + defeated * 8));
         return next.filter(e => e.hp > 0);
@@ -256,6 +269,7 @@ export default function Home() {
   const ownedCritters = useMemo(() => CRITTERS.filter(c => owned.includes(c.id)), [owned]);
   const runCritters = useMemo(() => CRITTERS.filter(c => runUnlocked.includes(c.id)), [runUnlocked]);
   const starterCritter = CRITTERS.find(c => c.id === starterId);
+  const starterChoices = CRITTERS.filter(c => c.starterEligible && (!c.wishOnly || owned.includes(c.id)));
   const inspectedTower = inspectedTowerSlot === null ? null : towers.find(t => t.slot === inspectedTowerSlot) || null;
   const statTotals = Object.values(stats).reduce((total, item) => ({ runs: total.runs + item.runs, victories: total.victories + item.victories, bosses: total.bosses + item.bossesDefeated, waves: total.waves + item.wavesCleared }), { runs: 0, victories: 0, bosses: 0, waves: 0 });
   const upcomingWave = Math.min(WAVES_PER_CHAPTER, wave + 1);
@@ -264,10 +278,10 @@ export default function Home() {
   const upcomingBrutes = upcomingWave === WAVES_PER_CHAPTER || upcomingDifficulty < 3 ? 0 : Array.from({ length: upcomingCount }, (_, index) => upcomingCount - index).filter(queue => queue % 4 === 0).length;
   const upcomingNormalHp = Math.round((58 + upcomingDifficulty * 18) * waveHpMultiplier.current);
   const upcomingEnemyIntel = upcomingWave === WAVES_PER_CHAPTER
-    ? [{ icon: activeChapter.bossIcon, name: activeChapter.bossName, count: 1, hp: Math.round((1200 + chapter * 800) * waveHpMultiplier.current), shield: Math.round((1200 + chapter * 800) * waveHpMultiplier.current * 0.2), ability: "Royal Ward: colossal health protected by a 20% shield." }]
+    ? [{ icon: activeChapter.bossIcon, name: activeChapter.bossName, count: 1, hp: Math.round((1200 + chapter * 800) * waveHpMultiplier.current), shield: Math.round((1200 + chapter * 800) * waveHpMultiplier.current * 0.2 * (starterId === "bloomwing" ? 0.75 : 1)), ability: "Royal Ward: colossal health protected by a 20% shield." }]
     : [
         { icon: "👾", name: "Gloomling", count: upcomingCount - upcomingBrutes, hp: upcomingNormalHp, shield: 0, ability: "Skitter: steady movement with no armour." },
-        ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), shield: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current * 0.35), ability: "Barkshield: protected by a shield equal to 35% of its health." }] : []),
+        ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), shield: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current * 0.35 * (starterId === "bloomwing" ? 0.75 : 1)), ability: "Barkshield: protected by a shield equal to 35% of its health." }] : []),
       ];
   const activeBuffs = [
     eventBuffs.harvest ? { icon: "🌸", name: `Moonbloom Covenant ×${eventBuffs.harvest}`, description: `+${eventBuffs.harvest * 5} petals after every wave` } : null,
@@ -284,6 +298,7 @@ export default function Home() {
 
   function chooseStarter(id: string) {
     const critter = CRITTERS.find(c => c.id === id)!;
+    if (!critter.starterEligible || (critter.wishOnly && !owned.includes(id))) return;
     setStarterId(id);
     setSelected(id);
     setRunUnlocked([id]);
@@ -291,7 +306,7 @@ export default function Home() {
     setMaxEnergy(200);
     setEnergy(id === "emberfox" ? 150 : 120);
     setLives(id === "bubblefin" ? 13 : 10);
-    setStats(current => ({ ...current, [id]: { ...current[id], runs: current[id].runs + 1, highestChapter: Math.max(1, current[id].highestChapter) } }));
+    setStats(current => { const record = current[id] || emptyStarterStats()[id]; return { ...current, [id]: { ...record, runs: record.runs + 1, highestChapter: Math.max(1, record.highestChapter) } }; });
     setMessage(`${critter.name} has chosen you. Place your first guardian when you are ready!`);
   }
 
@@ -438,9 +453,12 @@ export default function Home() {
     if (petals < 100) { setMessage("You need 100 petals for a new friendship."); return; }
     setPetals(p => p - 100);
     const roll = Math.random();
-    const rarity = roll < 0.1 ? "Legendary" : roll < 0.25 ? "Epic" : roll < 0.5 ? "Rare" : "Common";
-    const pool = CRITTERS.filter(c => c.rarity === rarity);
+    const rarity: Critter["rarity"] = roll < 0.15 ? "Legendary" : roll < 0.5 ? "Rare" : "Common";
+    const eligible = CRITTERS.filter(c => c.wishOnly && (!c.upgradeOf || owned.includes(c.upgradeOf)));
+    const rarityPool = eligible.filter(c => c.rarity === rarity);
+    const pool = rarityPool.length ? rarityPool : eligible;
     const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (!pick) { setPetals(p => p + 100); setMessage("The pond is quiet. Discover the previous evolution before wishing for its next form."); return; }
     setSummoned(pick);
     if (!owned.includes(pick.id)) setOwned(o => [...o, pick.id]); else setPetals(p => p + 35);
   }
@@ -461,23 +479,23 @@ export default function Home() {
 
       {saveLoaded && !starterId && <div className="choiceOverlay starterOverlay" role="dialog" aria-modal="true" aria-labelledby="starter-title">
         <section className="choicePanel starterPanel">
-          <span className="eyebrow">YOUR FIRST FRIEND</span>
+          <span className="eyebrow">CHOOSE YOUR STARTER</span>
           <h1 id="starter-title">Who will guard the Heart Tree?</h1>
-          <p>Choose your starting critter. Each companion grants a different blessing for every meadow adventure.</p>
+          <p>Choose from your unlocked starting critters. Each companion grants a different blessing for this adventure.</p>
           <div className="starterChoices">
-            {CRITTERS.slice(0, 3).map(c => <button key={c.id} onClick={() => chooseStarter(c.id)} style={{"--accent": c.color} as React.CSSProperties}>
+            {starterChoices.map(c => <button key={c.id} onClick={() => chooseStarter(c.id)} style={{"--accent": c.color} as React.CSSProperties}>
               <span className="starterPortrait">{c.icon}</span>
               <small>{c.title}</small><b>{c.name}</b>
-              <em>{c.id === "emberfox" ? "+30 starting energy" : c.id === "bubblefin" ? "+3 Heart Tree health" : "+15% guardian damage"}</em>
+              <em>{starterBlessing(c.id)}</em>
               <strong>Choose {c.name}</strong>
             </button>)}
           </div>
-          <small className="choiceHint">Your Critterbook is saved on this device. Every new adventure lets you choose a starter again.</small>
+          <small className="choiceHint">Sparkit, Bloomwing, and Moonowl join this list after you discover them in the Wish Pond. Critterbook unlocks persist between runs.</small>
         </section>
       </div>}
 
       {tab === "battle" && <section className="battlePage">
-        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterId === "emberfox" ? "+30 starting energy" : starterId === "bubblefin" ? "+3 Heart Tree health" : "+15% guardian damage"}</small></div>}</div><div className="battleStats"><span className="resourceStat" tabIndex={0} data-tooltip="Objective health. You lose when it reaches zero.">❤️ <b>{lives}</b></span><span className="resourceStat" tabIndex={0} data-tooltip={`Energy places guardians. You have ${energy} of ${maxEnergy}.`}>🔥 <b>{energy}</b></span><span className="resourceStat shardStat" tabIndex={0} data-tooltip="Rare Dewshards come only from events and upgrade placed guardians.">💠 <b>{dewshards}</b></span><span className="resourceStat" tabIndex={0} data-tooltip="Current wave in this chapter. Wave 10 is the boss.">🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span><button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
+        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}>{starterCritter.icon}</span><small><b>{starterCritter.name}&apos;s blessing</b>{starterBlessing(starterCritter.id)}</small></div>}</div><div className="battleStats"><span className="resourceStat" tabIndex={0} data-tooltip="Objective health. You lose when it reaches zero.">❤️ <b>{lives}</b></span><span className="resourceStat" tabIndex={0} data-tooltip={`Energy places guardians. You have ${energy} of ${maxEnergy}.`}>🔥 <b>{energy}</b></span><span className="resourceStat shardStat" tabIndex={0} data-tooltip="Rare Dewshards come only from events and upgrade placed guardians.">💠 <b>{dewshards}</b></span><span className="resourceStat" tabIndex={0} data-tooltip="Current wave in this chapter. Wave 10 is the boss.">🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span><button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
         <div className="gameShell">
           <div className={`field ${activeChapter.theme}`} aria-label={`${activeChapter.region} tower defence battlefield`}>
             <div className="sun"/><div className="cloud cloudOne">☁</div><div className="cloud cloudTwo">☁</div>
@@ -562,8 +580,8 @@ export default function Home() {
             <p>{inspectedTower.critter.title}</p>
             <div className="towerStatsGrid">
               <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * (starterId === "mossback" ? 1.15 : 1) * runDamageMultiplier.current * (1 + (inspectedTower.level - 1) * 0.35))}</b></span>
-              <span><small>RANGE</small><b>{inspectedTower.critter.range + (inspectedTower.level >= 3 ? 1 : 0)} tiles</b></span>
-              <span><small>ATTACK TEMPO</small><b>{inspectedTower.critter.speed <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
+              <span><small>RANGE</small><b>{inspectedTower.critter.range + (inspectedTower.level >= 3 ? 1 : 0) + (starterId === "moonowl" ? 1 : 0)} tiles</b></span>
+              <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - (starterId === "sparkit" ? 1 : 0)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
             </div>
             <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>
             <button className="upgradeButton" disabled={inspectedTower.level >= 3} onClick={upgradeTower}>{inspectedTower.level >= 3 ? "Maximum level reached" : `Upgrade to level ${inspectedTower.level + 1} • 💠 ${inspectedTower.level + 1}`}</button>
@@ -587,9 +605,10 @@ export default function Home() {
 
       {tab === "collection" && <section className="bookPage">
         <div className="pageHeading"><span className="eyebrow">YOUR LIVING COLLECTION</span><h1>The Critterbook</h1><p>Every friendship adds a new leaf to the Heart Tree.</p></div>
+        <div className="evolutionGuide"><span><b>Common</b> Base forms and starting guardians</span><i>→</i><span><b>Rare</b> Stronger signature abilities</span><i>→</i><span><b>Legendary</b> Final core evolutions</span><em>Epic sidegrade paths will arrive in a future update.</em></div>
         <div className="progressCard"><div><span>✿</span><b>{owned.length} of {CRITTERS.length} discovered</b></div><div className="progress"><i style={{width:`${owned.length/CRITTERS.length*100}%`}}/></div></div>
         <div className="cards">{CRITTERS.map((c, i) => { const unlocked = owned.includes(c.id); const baseCritter = c.upgradeOf ? CRITTERS.find(base => base.id === c.upgradeOf) : null; return <article key={c.id} className={!unlocked ? "locked" : ""} style={{"--accent": c.color} as React.CSSProperties}>
-          <div className="cardTop"><small>NO. 00{i+1}</small><span>{c.rarity}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.wishOnly ? "A rare evolution sleeps within the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ Evolves {baseCritter.name}</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span><span>🔥 {c.cost}</span></div>}
+          <div className="cardTop"><small>NO. {String(i + 1).padStart(3, "0")}</small><span>{c.rarity} • TIER {c.tier}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.upgradeOf ? c.tier === 3 ? "A final evolution waits beyond its Rare form…" : "A stronger signature evolution sleeps in the Wish Pond…" : c.starterEligible ? "An unlockable starting guardian waits in the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ From {baseCritter.name}</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span><span>🔥 {c.cost}</span></div>}
         </article>; })}</div>
       </section>}
 
@@ -602,8 +621,8 @@ export default function Home() {
           <article><span>🌙</span><b>{statTotals.waves}</b><small>Waves cleared</small></article>
         </div>
         <div className="starterRecords">
-          {CRITTERS.slice(0, 3).map(critter => { const record = stats[critter.id]; const winRate = record.runs ? Math.round(record.victories / record.runs * 100) : 0; return <article key={critter.id} style={{"--accent": critter.color} as React.CSSProperties}>
-            <div className="recordGuardian"><span style={{background:critter.color}}>{critter.icon}</span><div><small>STARTING GUARDIAN</small><h2>{critter.name}</h2><p>{critter.title}</p></div></div>
+          {CRITTERS.filter(c => c.starterEligible).map(critter => { const record = stats[critter.id] || emptyStarterStats()[critter.id]; const unlocked = !critter.wishOnly || owned.includes(critter.id); const winRate = record.runs ? Math.round(record.victories / record.runs * 100) : 0; return <article key={critter.id} className={!unlocked ? "lockedRecord" : ""} style={{"--accent": critter.color} as React.CSSProperties}>
+            <div className="recordGuardian"><span style={{background:unlocked ? critter.color : "#b8b9ae"}}>{unlocked ? critter.icon : "?"}</span><div><small>{unlocked ? "STARTING GUARDIAN" : "WISH POND STARTER"}</small><h2>{unlocked ? critter.name : "Undiscovered"}</h2><p>{unlocked ? critter.title : "Unlock to choose for a future run"}</p></div></div>
             <div className="recordNumbers"><span><b>{record.runs}</b><small>Runs</small></span><span><b>{record.victories}</b><small>Victories</small></span><span><b>{winRate}%</b><small>Win rate</small></span><span><b>{record.highestChapter || "—"}</b><small>Best chapter</small></span><span><b>{record.bossesDefeated}</b><small>Bosses</small></span><span><b>{record.wavesCleared}</b><small>Waves</small></span></div>
           </article>; })}
         </div>
@@ -611,7 +630,7 @@ export default function Home() {
 
       {tab === "summon" && <section className="summonPage">
         <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><span>{summoned.icon}</span><small>{summoned.rarity} friend</small><h2>{summoned.name}</h2><p>{summoned.upgradeOf ? `Wish Pond evolution • ${summoned.skill}` : summoned.skill}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
-        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>Every wish reveals one critter. Legendary wishes can reveal evolved guardians; once discovered, they may appear as recruits during future runs. Duplicates return 35 petals.</p><div className="odds"><span>Common <b>50%</b></span><span>Rare <b>25%</b></span><span>Epic <b>15%</b></span><span>Legendary <b>10%</b></span></div><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
+        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>Discover Sparkit, Bloomwing, and Moonowl to make them available as future starters. Rare evolutions become wishable after discovering their base form, and Legendary finals unlock after their Rare form. Duplicates return 35 petals.</p><div className="odds"><span>Common <b>50%</b></span><span>Rare <b>35%</b></span><span>Legendary <b>15%</b></span></div><small className="futurePath">Epic alternative evolutions are planned as balanced sidegrades.</small><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
       </section>}
       <footer><span>Prototype meadow • Progress saves on this device</span><span>Made with a little magic ✦</span></footer>
     </main>
