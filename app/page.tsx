@@ -6,7 +6,7 @@ type Critter = {
   id: string; name: string; title: string; icon: string; color: string;
   cost: number; damage: number; speed: number; range: number; rarity: "Common" | "Rare" | "Epic" | "Legendary"; skill: string;
   ability: "burn" | "waterSplash" | "slow" | "chain" | "shieldPierce" | "beam";
-  tier: 1 | 2 | 3; starterEligible?: boolean; wishOnly?: boolean; upgradeOf?: string;
+  tier: 1 | 2 | 3; starterEligible?: boolean; wishOnly?: boolean; upgradeOf?: string; evolutionPath?: "core" | "alternative";
 };
 
 type Enemy = { id: number; step: number; hp: number; maxHp: number; shield: number; maxShield: number; kind: string; icon: string; boss?: boolean; burnTicks?: number; burnDamage?: number; slowTicks?: number; slowFactor?: number };
@@ -25,18 +25,18 @@ const CRITTERS: Critter[] = [
   { id: "sparkit", name: "Sparkit", title: "Storm Kitten", icon: "🐱", color: "#f5c84b", cost: 75, damage: 23, speed: 3, range: 2, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "chain", skill: "Chain Spark: arcs to 2 additional enemies in range." },
   { id: "bloomwing", name: "Bloomwing", title: "Garden Sprite", icon: "🦋", color: "#e982b5", cost: 80, damage: 28, speed: 3, range: 3, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "shieldPierce", skill: "Petal Needle: pierces shields and strikes health directly." },
   { id: "moonowl", name: "Moonowl", title: "Star Watcher", icon: "🦉", color: "#9b88e8", cost: 95, damage: 48, speed: 5, range: 4, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "beam", skill: "Moonbeam: pierces up to 4 enemies with fading damage." },
-  { id: "cinderpup", name: "Cinderpup", title: "Blazing Scout", icon: "🐕", color: "#f36f45", cost: 70, damage: 27, speed: 2, range: 2, rarity: "Rare", tier: 2, ability: "burn", skill: "Bright Kindle: burns for 25% damage over 4 ticks.", wishOnly: true, upgradeOf: "emberfox" },
-  { id: "ripplefin", name: "Ripplefin", title: "River Dancer", icon: "🐠", color: "#3db6df", cost: 82, damage: 18, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "waterSplash", skill: "Ripple Burst: creates a wider splash with stronger secondary damage.", wishOnly: true, upgradeOf: "bubblefin" },
-  { id: "thornshell", name: "Thornshell", title: "Bramble Bulwark", icon: "🦔", color: "#58a45f", cost: 92, damage: 45, speed: 4, range: 2, rarity: "Rare", tier: 2, ability: "slow", skill: "Bramble Slam: slows enemies by 53% for 5 ticks.", wishOnly: true, upgradeOf: "mossback" },
-  { id: "voltlynx", name: "Voltlynx", title: "Thunder Prowler", icon: "🐈", color: "#eab72f", cost: 100, damage: 33, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "chain", skill: "Forked Spark: chains to 3 additional enemies with stronger arcs.", wishOnly: true, upgradeOf: "sparkit" },
-  { id: "briarwing", name: "Briarwing", title: "Thorn Dancer", icon: "🦋", color: "#d95d9d", cost: 105, damage: 40, speed: 3, range: 4, rarity: "Rare", tier: 2, ability: "shieldPierce", skill: "Briar Needle: bypasses shields and deals bonus damage to shielded foes.", wishOnly: true, upgradeOf: "bloomwing" },
-  { id: "duskowl", name: "Duskowl", title: "Twilight Seer", icon: "🦉", color: "#7967cf", cost: 120, damage: 66, speed: 4, range: 4, rarity: "Rare", tier: 2, ability: "beam", skill: "Duskbeam: pierces 5 enemies and loses less damage between targets.", wishOnly: true, upgradeOf: "moonowl" },
-  { id: "embermane", name: "Embermane", title: "Wildfire Heir", icon: "🐺", color: "#f04f45", cost: 112, damage: 40, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "burn", skill: "Wildfire: burns for 30% damage over 5 ticks.", wishOnly: true, upgradeOf: "cinderpup" },
-  { id: "tidecaller", name: "Tidecaller", title: "Ocean Oracle", icon: "🐬", color: "#279fd1", cost: 122, damage: 28, speed: 2, range: 4, rarity: "Legendary", tier: 3, ability: "waterSplash", skill: "Tidal Burst: creates the largest splash with powerful secondary damage.", wishOnly: true, upgradeOf: "ripplefin" },
-  { id: "eldermoss", name: "Eldermoss", title: "Ancient Grove", icon: "🦕", color: "#438f58", cost: 132, damage: 62, speed: 4, range: 2, rarity: "Legendary", tier: 3, ability: "slow", skill: "Worldroot Slam: slows its target by 60% for 6 ticks.", wishOnly: true, upgradeOf: "thornshell" },
-  { id: "stormsabre", name: "Stormsabre", title: "Skyfang Regent", icon: "🐯", color: "#d99b1f", cost: 138, damage: 48, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "chain", skill: "Tempest Chain: arcs through 5 enemies while retaining most of its power.", wishOnly: true, upgradeOf: "voltlynx" },
-  { id: "crownwing", name: "Crownwing", title: "Royal Petalblade", icon: "🦚", color: "#bd4b91", cost: 142, damage: 58, speed: 3, range: 4, rarity: "Legendary", tier: 3, ability: "shieldPierce", skill: "Crown Needle: ignores shields and punishes shielded enemies for 30% bonus damage.", wishOnly: true, upgradeOf: "briarwing" },
-  { id: "celestowl", name: "Celestowl", title: "Astral Witness", icon: "🦅", color: "#6552bb", cost: 155, damage: 86, speed: 4, range: 5, rarity: "Legendary", tier: 3, ability: "beam", skill: "Starfall Beam: pierces 6 enemies with only slight damage falloff.", wishOnly: true, upgradeOf: "duskowl" },
+  { id: "cinderpup", name: "Cinderpup", title: "Blazing Scout", icon: "🐕", color: "#f36f45", cost: 70, damage: 27, speed: 2, range: 2, rarity: "Rare", tier: 2, ability: "burn", skill: "Bright Kindle: burns for 25% damage over 4 ticks.", evolutionPath: "core", upgradeOf: "emberfox" },
+  { id: "ripplefin", name: "Ripplefin", title: "River Dancer", icon: "🐠", color: "#3db6df", cost: 82, damage: 18, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "waterSplash", skill: "Ripple Burst: creates a wider splash with stronger secondary damage.", evolutionPath: "core", upgradeOf: "bubblefin" },
+  { id: "thornshell", name: "Thornshell", title: "Bramble Bulwark", icon: "🦔", color: "#58a45f", cost: 92, damage: 45, speed: 4, range: 2, rarity: "Rare", tier: 2, ability: "slow", skill: "Bramble Slam: slows enemies by 53% for 5 ticks.", evolutionPath: "core", upgradeOf: "mossback" },
+  { id: "voltlynx", name: "Voltlynx", title: "Thunder Prowler", icon: "🐈", color: "#eab72f", cost: 100, damage: 33, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "chain", skill: "Forked Spark: chains to 3 additional enemies with stronger arcs.", evolutionPath: "core", upgradeOf: "sparkit" },
+  { id: "briarwing", name: "Briarwing", title: "Thorn Dancer", icon: "🦋", color: "#d95d9d", cost: 105, damage: 40, speed: 3, range: 4, rarity: "Rare", tier: 2, ability: "shieldPierce", skill: "Briar Needle: bypasses shields and deals bonus damage to shielded foes.", evolutionPath: "core", upgradeOf: "bloomwing" },
+  { id: "duskowl", name: "Duskowl", title: "Twilight Seer", icon: "🦉", color: "#7967cf", cost: 120, damage: 66, speed: 4, range: 4, rarity: "Rare", tier: 2, ability: "beam", skill: "Duskbeam: pierces 5 enemies and loses less damage between targets.", evolutionPath: "core", upgradeOf: "moonowl" },
+  { id: "embermane", name: "Embermane", title: "Wildfire Heir", icon: "🐺", color: "#f04f45", cost: 112, damage: 40, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "burn", skill: "Wildfire: burns for 30% damage over 5 ticks.", evolutionPath: "core", upgradeOf: "cinderpup" },
+  { id: "tidecaller", name: "Tidecaller", title: "Ocean Oracle", icon: "🐬", color: "#279fd1", cost: 122, damage: 28, speed: 2, range: 4, rarity: "Legendary", tier: 3, ability: "waterSplash", skill: "Tidal Burst: creates the largest splash with powerful secondary damage.", evolutionPath: "core", upgradeOf: "ripplefin" },
+  { id: "eldermoss", name: "Eldermoss", title: "Ancient Grove", icon: "🦕", color: "#438f58", cost: 132, damage: 62, speed: 4, range: 2, rarity: "Legendary", tier: 3, ability: "slow", skill: "Worldroot Slam: slows its target by 60% for 6 ticks.", evolutionPath: "core", upgradeOf: "thornshell" },
+  { id: "stormsabre", name: "Stormsabre", title: "Skyfang Regent", icon: "🐯", color: "#d99b1f", cost: 138, damage: 48, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "chain", skill: "Tempest Chain: arcs through 5 enemies while retaining most of its power.", evolutionPath: "core", upgradeOf: "voltlynx" },
+  { id: "crownwing", name: "Crownwing", title: "Royal Petalblade", icon: "🦚", color: "#bd4b91", cost: 142, damage: 58, speed: 3, range: 4, rarity: "Legendary", tier: 3, ability: "shieldPierce", skill: "Crown Needle: ignores shields and punishes shielded enemies for 30% bonus damage.", evolutionPath: "core", upgradeOf: "briarwing" },
+  { id: "celestowl", name: "Celestowl", title: "Astral Witness", icon: "🦅", color: "#6552bb", cost: 155, damage: 86, speed: 4, range: 5, rarity: "Legendary", tier: 3, ability: "beam", skill: "Starfall Beam: pierces 6 enemies with only slight damage falloff.", evolutionPath: "core", upgradeOf: "duskowl" },
 ];
 
 const BOARD_SIZE = 8;
@@ -270,7 +270,7 @@ export default function Home() {
   const starterCritter = CRITTERS.find(c => c.id === starterId);
   const starterChoices = CRITTERS.filter(c => c.starterEligible && (!c.wishOnly || owned.includes(c.id)));
   const inspectedTower = inspectedTowerSlot === null ? null : towers.find(t => t.slot === inspectedTowerSlot) || null;
-  const inspectedEvolution = inspectedTower ? CRITTERS.find(c => c.upgradeOf === inspectedTower.critter.id) || null : null;
+  const inspectedEvolutions = inspectedTower ? CRITTERS.filter(c => c.upgradeOf === inspectedTower.critter.id && (c.evolutionPath === "core" || owned.includes(c.id))) : [];
   const statTotals = Object.values(stats).reduce((total, item) => ({ runs: total.runs + item.runs, victories: total.victories + item.victories, bosses: total.bosses + item.bossesDefeated, waves: total.waves + item.wavesCleared }), { runs: 0, victories: 0, bosses: 0, waves: 0 });
   const upcomingWave = Math.min(WAVES_PER_CHAPTER, wave + 1);
   const upcomingDifficulty = (chapter - 1) * WAVES_PER_CHAPTER + upcomingWave;
@@ -425,14 +425,14 @@ export default function Home() {
     setEnergy(v => v - selectedCritter.cost); setTowers(ts => [...ts, { slot, critter: selectedCritter, cooldown: 0 }]); setMessage(`${selectedCritter.name} is ready to defend!`);
   }
 
-  function evolveTower() {
-    if (!inspectedTower || !inspectedEvolution) return;
+  function evolveTower(evolution: Critter) {
+    if (!inspectedTower || !inspectedEvolutions.some(option => option.id === evolution.id)) return;
     const cost = inspectedTower.critter.tier === 1 ? 1 : 2;
-    if (dewshards < cost) { setMessage(`${inspectedTower.critter.name} needs ${cost} Dewshard${cost === 1 ? "" : "s"} to evolve into ${inspectedEvolution.name}.`); return; }
+    if (dewshards < cost) { setMessage(`${inspectedTower.critter.name} needs ${cost} Dewshard${cost === 1 ? "" : "s"} to evolve into ${evolution.name}.`); return; }
     setDewshards(shards => shards - cost);
-    setTowers(current => current.map(tower => tower.slot === inspectedTower.slot ? { ...tower, critter: inspectedEvolution, cooldown: 0 } : tower));
-    setOwned(current => current.includes(inspectedEvolution.id) ? current : [...current, inspectedEvolution.id]);
-    setMessage(`${inspectedTower.critter.name} evolved into ${inspectedEvolution.name}!`);
+    setTowers(current => current.map(tower => tower.slot === inspectedTower.slot ? { ...tower, critter: evolution, cooldown: 0 } : tower));
+    setOwned(current => current.includes(evolution.id) ? current : [...current, evolution.id]);
+    setMessage(`${inspectedTower.critter.name} evolved into ${evolution.name}!`);
   }
 
   function resetBattle() {
@@ -453,7 +453,7 @@ export default function Home() {
   function summon() {
     if (petals < 100) { setMessage("You need 100 petals for a new friendship."); return; }
     setPetals(p => p - 100);
-    const pool = CRITTERS.filter(c => c.tier === 1 && c.wishOnly);
+    const pool = CRITTERS.filter(c => c.wishOnly && (c.tier === 1 || (c.tier === 2 && c.evolutionPath === "alternative" && (!c.upgradeOf || owned.includes(c.upgradeOf)))));
     const pick = pool[Math.floor(Math.random() * pool.length)];
     if (!pick) { setPetals(p => p + 100); setMessage("The pond is quiet. More base guardians will arrive in a future update."); return; }
     setSummoned(pick);
@@ -581,7 +581,7 @@ export default function Home() {
               <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - (starterId === "sparkit" ? 1 : 0)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
             </div>
             <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>
-            <button className="upgradeButton" disabled={!inspectedEvolution} onClick={evolveTower}>{inspectedEvolution ? `Evolve into ${inspectedEvolution.name} • 💠 ${inspectedTower.critter.tier === 1 ? 1 : 2}` : "Final evolution reached"}</button>
+            {inspectedEvolutions.length ? <div className="evolutionButtons">{inspectedEvolutions.map(evolution => <button key={evolution.id} className="upgradeButton" onClick={() => evolveTower(evolution)}>{evolution.evolutionPath === "alternative" ? "Alternative: " : ""}Evolve into {evolution.name} • 💠 {inspectedTower.critter.tier === 1 ? 1 : 2}</button>)}</div> : <button className="upgradeButton" disabled>Final evolution reached</button>}
             <button className="primary" onClick={closeTowerInfo}>Return to battle</button>
           </section>
         </div>}
@@ -605,7 +605,7 @@ export default function Home() {
         <div className="evolutionGuide"><span><b>Tier 1</b> Base forms and starting guardians</span><i>→ 💠 1</i><span><b>Tier 2</b> Evolved forms with stronger abilities</span><i>→ 💠 2</i><span><b>Tier 3</b> Final core evolutions</span><em>Place a guardian, select it, and spend Dewshards to evolve it during that run. Epic sidegrade paths will arrive later.</em></div>
         <div className="progressCard"><div><span>✿</span><b>{owned.length} of {CRITTERS.length} discovered</b></div><div className="progress"><i style={{width:`${owned.length/CRITTERS.length*100}%`}}/></div></div>
         <div className="cards">{CRITTERS.map((c, i) => { const unlocked = owned.includes(c.id); const baseCritter = c.upgradeOf ? CRITTERS.find(base => base.id === c.upgradeOf) : null; return <article key={c.id} className={!unlocked ? "locked" : ""} style={{"--accent": c.color} as React.CSSProperties}>
-          <div className="cardTop"><small>NO. {String(i + 1).padStart(3, "0")}</small><span>{c.rarity} • TIER {c.tier}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.upgradeOf ? `Evolve ${baseCritter?.name || "the previous form"} during a run to discover this form…` : c.starterEligible ? "An unlockable starting guardian waits in the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ Evolves from {baseCritter.name}</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span>{c.tier === 1 && <span>🔥 {c.cost}</span>}</div>}
+          <div className="cardTop"><small>NO. {String(i + 1).padStart(3, "0")}</small><span>{c.rarity} • TIER {c.tier}</span></div><div className="bigCritter">{unlocked ? c.icon : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.upgradeOf ? c.evolutionPath === "alternative" ? `An alternative form of ${baseCritter?.name || "a guardian"} waits in the Wish Pond…` : `Evolve ${baseCritter?.name || "the previous form"} during a run to discover this form…` : c.starterEligible ? "An unlockable starting guardian waits in the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ Evolves from {baseCritter.name}</span>}{c.evolutionPath === "alternative" && <span>✦ Alternative path</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span>{c.tier === 1 && <span>🔥 {c.cost}</span>}</div>}
         </article>; })}</div>
       </section>}
 
@@ -626,8 +626,8 @@ export default function Home() {
       </section>}
 
       {tab === "summon" && <section className="summonPage">
-        <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><span>{summoned.icon}</span><small>Tier 1 friend</small><h2>{summoned.name}</h2><p>{summoned.skill}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
-        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>The Wish Pond discovers new Tier 1 guardians such as Sparkit, Bloomwing, and Moonowl. Their Tier 2 and Tier 3 forms are reached by evolving placed guardians with Dewshards during a run. Duplicates return 35 petals.</p><div className="odds"><span>Tier 1 guardian <b>100%</b></span></div><small className="futurePath">Epic alternative evolutions are planned as balanced sidegrades.</small><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
+        <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><span>{summoned.icon}</span><small>Tier {summoned.tier} {summoned.evolutionPath === "alternative" ? "alternative form" : "friend"}</small><h2>{summoned.name}</h2><p>{summoned.skill}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
+        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>The Wish Pond unlocks new Tier 1 guardians and alternative Tier 2 forms. After an alternative form is discovered, it appears beside the normal evolution when you select its placed Tier 1 guardian. Normal evolutions never require a Wish Pond unlock. Duplicates return 35 petals.</p><div className="odds"><span>Tier 1 guardians <b>Base forms</b></span><span>Alternative Tier 2 <b>Wish unlocks</b></span></div><small className="futurePath">Alternative forms are balanced sidegrades with different strengths, not automatic replacements.</small><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
       </section>}
       <footer><span>Prototype meadow • Progress saves on this device</span><span>Made with a little magic ✦</span></footer>
     </main>
