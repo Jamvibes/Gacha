@@ -17,6 +17,7 @@ type AttackFx = { id: number; from: number; to: number; color: string; critterId
 type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal" };
 type StarterStats = { runs: number; victories: number; bossesDefeated: number; wavesCleared: number; highestChapter: number };
 type ChapterConfig = { number: number; region: string; title: string; theme: string; path: number[]; slots: number[]; bossName: string; bossIcon: string; goalIcon: string; goalName: string };
+type EnemyCodexEntry = { name: string; title: string; icon: string; chapter: string; role: string; defence: string; ability: string; color: string; boss?: boolean };
 type RunSave = {
   version: 1; starterId: string; selected: string; chapter: number; wave: number;
   energy: number; maxEnergy: number; lives: number; dewshards: number;
@@ -80,6 +81,14 @@ const ENEMY_SPRITES: Record<string, string> = {
   "The Mire Monarch": "./enemies/mire-monarch-sprite.png",
   "The Hollow Crown": "./enemies/hollow-crown-sprite.png",
 };
+
+const ENEMY_CODEX: EnemyCodexEntry[] = [
+  { name: "Gloomling", title: "Restless Shadow", icon: "👾", chapter: "All chapters", role: "Common foe", defence: "No shield", ability: "Skitter: steady movement with no armour.", color: "#816d9d" },
+  { name: "Bramble Brute", title: "Armoured Thicket", icon: "👹", chapter: "All chapters", role: "Shielded foe", defence: "Barkshield: 35% shield", ability: "Barkshield protects it until guardians break through the extra barrier.", color: "#71824e" },
+  { name: "The Thornmaw", title: "Meadow Devourer", icon: "🐲", chapter: "Chapter 1 · Sundew Meadow", role: "Boss", defence: "Royal Ward: 20% shield", ability: "A colossal creature with exceptional health and a protective ward.", color: "#9a5b69", boss: true },
+  { name: "The Mire Monarch", title: "Sovereign of the Mist", icon: "🐙", chapter: "Chapter 2 · Moonpetal Marsh", role: "Boss", defence: "Royal Ward: 20% shield", ability: "Rules the marsh with colossal health and a protective ward.", color: "#567d83", boss: true },
+  { name: "The Hollow Crown", title: "Starless Usurper", icon: "👑", chapter: "Chapter 3 · Starlight Canopy", role: "Final boss", defence: "Royal Ward: 20% shield", ability: "The final guardian of the Gloom, fortified by colossal health and a protective ward.", color: "#6e588d", boss: true },
+];
 
 const cellPoint = (cell: number) => ({
   x: (cell % BOARD_SIZE) * (100 / BOARD_SIZE) + 100 / BOARD_SIZE / 2,
@@ -719,6 +728,15 @@ export default function Home() {
         <div className="cards">{CRITTERS.map((c, i) => { const unlocked = owned.includes(c.id); const baseCritter = c.upgradeOf ? CRITTERS.find(base => base.id === c.upgradeOf) : null; return <article key={c.id} className={!unlocked ? "locked" : ""} style={{"--accent": c.color} as React.CSSProperties}>
           <div className="cardTop"><small>NO. {String(i + 1).padStart(3, "0")}</small><span>{c.rarity} • TIER {c.tier}</span></div><div className="bigCritter">{unlocked ? <CritterArt critter={c}/> : "?"}</div><h2>{unlocked ? c.name : "Undiscovered"}</h2><p>{unlocked ? c.title : c.upgradeOf ? c.evolutionPath === "alternative" ? `An alternative form of ${baseCritter?.name || "a guardian"} waits in the Wish Pond…` : `Evolve ${baseCritter?.name || "the previous form"} during a run to discover this form…` : c.starterEligible ? "An unlockable starting guardian waits in the Wish Pond…" : "A mysterious friend waits nearby…"}</p>{unlocked && <div className="chips">{baseCritter && <span>✨ Evolves from {baseCritter.name}</span>}{c.evolutionPath === "alternative" && <span>✦ Alternative path</span>}<span>⚔ {c.damage}</span><span>◎ {c.range}</span>{c.tier === 1 && <span>🔥 {c.cost}</span>}</div>}
         </article>; })}</div>
+        <section className="enemyBookSection" aria-labelledby="enemy-archive-title">
+          <div className="enemyBookHeading"><span className="eyebrow">CREATURES OF THE GLOOM</span><h2 id="enemy-archive-title">Enemy Archive</h2><p>Study the foes threatening the Heart Tree. Enemy entries are field notes, not collectible guardians.</p></div>
+          <div className="enemyCards">{ENEMY_CODEX.map((enemy, i) => <article key={enemy.name} className={enemy.boss ? "bossEntry" : ""} style={{"--accent": enemy.color} as React.CSSProperties}>
+            <div className="cardTop"><small>FOE {String(i + 1).padStart(2, "0")}</small><span>{enemy.role}</span></div>
+            <div className="enemyBookPortrait"><EnemyArt kind={enemy.name} icon={enemy.icon}/></div>
+            <small className="enemyChapter">{enemy.chapter}</small><h3>{enemy.name}</h3><p className="enemyTitle">{enemy.title}</p>
+            <div className="enemyTraits"><span><small>DEFENCE</small><b>{enemy.defence}</b></span><span><small>ABILITY</small><b>{enemy.ability}</b></span></div>
+          </article>)}</div>
+        </section>
       </section>}
 
       {tab === "statistics" && <section className="bookPage statsPage">
