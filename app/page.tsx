@@ -61,6 +61,15 @@ const CHAPTERS: ChapterConfig[] = [
     slots: [49,58,33,36,43,51,27,30,14,5], bossName: "The Hollow Crown", bossIcon: "👑", goalIcon: "💎", goalName: "STAR CRYSTAL",
   },
 ];
+
+const ENEMY_SPRITES: Record<string, string> = {
+  Gloomling: "./enemies/gloomling-sprite.png",
+  "Bramble Brute": "./enemies/bramble-brute-sprite.png",
+  "The Thornmaw": "./enemies/thornmaw-sprite.png",
+  "The Mire Monarch": "./enemies/mire-monarch-sprite.png",
+  "The Hollow Crown": "./enemies/hollow-crown-sprite.png",
+};
+
 const cellPoint = (cell: number) => ({
   x: (cell % BOARD_SIZE) * (100 / BOARD_SIZE) + 100 / BOARD_SIZE / 2,
   y: Math.floor(cell / BOARD_SIZE) * (100 / BOARD_SIZE) + 100 / BOARD_SIZE / 2,
@@ -73,6 +82,16 @@ const cellStyle = (cell: number) => {
 function CritterArt({ critter, animated = false, attacking = false }: { critter: Critter; animated?: boolean; attacking?: boolean }) {
   if (!critter.sprite) return <span className="critterEmoji">{critter.icon}</span>;
   return <i className={`critterArt ${animated ? "animated" : ""} ${attacking ? "attacking" : ""}`} style={{ backgroundImage: `url(${critter.sprite})` }} role="img" aria-label={critter.name}/>;
+}
+
+function EnemyArt({ kind, icon, animated = false }: { kind: string; icon: string; animated?: boolean }) {
+  const sprite = ENEMY_SPRITES[kind];
+  if (!sprite) return <span className="enemyEmoji">{icon}</span>;
+  return <i className={`enemyArt ${animated ? "animated" : ""}`} style={{ backgroundImage: `url(${sprite})` }} role="img" aria-label={kind}/>;
+}
+
+function LandmarkArt({ name, sprite }: { name: string; sprite: string }) {
+  return <i className="landmarkArt animated" style={{ backgroundImage: `url(${sprite})` }} role="img" aria-label={name}/>;
 }
 
 export default function Home() {
@@ -507,14 +526,15 @@ export default function Home() {
               <i className="mushroom mushroomOne"/><i className="mushroom mushroomTwo"/>
               <i className="pebbles pebblesOne"/><i className="pebbles pebblesTwo"/>
             </div>
-            <div className="portal" style={cellStyle(activePath[0])}>🌀<small>GLOOM</small></div><div className="tree" style={cellStyle(activePath[activePath.length - 1])}>{activeChapter.goalIcon}<small>{activeChapter.goalName}</small></div>
+            <div className="portal" style={cellStyle(activePath[0])}><LandmarkArt name="Gloom Gate" sprite="./landmarks/gloom-gate-sprite.png"/><small>GLOOM</small></div>
+            <div className="tree" style={cellStyle(activePath[activePath.length - 1])}>{activeChapter.number === 1 ? <LandmarkArt name="Heart Tree" sprite="./landmarks/heart-tree-sprite.png"/> : <span>{activeChapter.goalIcon}</span>}<small>{activeChapter.goalName}</small></div>
             {activeSlots.map((cell, slot) => {
               const tower = towers.find(t => t.slot === slot);
               return <button key={cell} aria-label={tower ? tower.critter.name : "Empty defender stone"} className={`towerSlot ${tower ? "filled" : ""}`} onClick={() => placeTower(slot)} style={{...cellStyle(cell), ...(tower ? {"--critter": tower.critter.color} : {})} as React.CSSProperties}>
                 {tower ? <><CritterArt critter={tower.critter} animated attacking={attackFx.some(fx => fx.from === cell && fx.critterId === tower.critter.id)}/><small>{tower.critter.name} • T{tower.critter.tier}</small></> : <><span>✦</span><small>PLACE</small></>}
               </button>;
             })}
-            {enemies.map(e => { const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy ${e.boss ? "boss" : ""}`} style={cellStyle(p)}>{e.boss && <small>BOSS</small>}<span>{e.icon}</span>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
+            {enemies.map(e => { const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy ${e.boss ? "boss" : ""}`} style={cellStyle(p)}>{e.boss && <small>BOSS</small>}<EnemyArt kind={e.kind} icon={e.icon} animated/>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
             {attackFx.map(fx => {
               const from = cellPoint(fx.from); const to = cellPoint(fx.to);
               return <i key={fx.id} className={`attackFx fx-${fx.critterId}`} style={{"--from-x":`${from.x}%`,"--from-y":`${from.y}%`,"--to-x":`${to.x}%`,"--to-y":`${to.y}%`,"--fx-color":fx.color} as React.CSSProperties}><b/></i>;
@@ -532,7 +552,7 @@ export default function Home() {
             </div>
             <div className="selectedInfo"><span style={{background:selectedCritter.color}}><CritterArt critter={selectedCritter}/></span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range}</small></div></div>
             <div className="buffPanel"><div className="buffTitle"><b>Run Blessings</b><small>Last until this run ends</small></div>{activeBuffs.length ? <div className="buffList">{activeBuffs.map(blessing => <span key={blessing.name}><i>{blessing.icon}</i><b>{blessing.name}</b><small>{blessing.description}</small></span>)}</div> : <p>No Blessings yet. Event decisions and relics can grant them.</p>}</div>
-            {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><span>{enemy.icon}</span><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP{enemy.shield ? ` • ${enemy.shield} shield` : ""} each</small><p>{enemy.ability}</p></div></article>)}</div>}
+            {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><EnemyArt kind={enemy.name} icon={enemy.icon}/><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP{enemy.shield ? ` • ${enemy.shield} shield` : ""} each</small><p>{enemy.ability}</p></div></article>)}</div>}
             {wave > 0 && wave < WAVES_PER_CHAPTER && <div className={`waveCondition ${wave === WAVES_PER_CHAPTER - 1 ? "bossWarning" : ""}`}><small>{wave === WAVES_PER_CHAPTER - 1 ? "BOSS APPROACHING" : "NEXT WAVE"}</small><b>{wave === WAVES_PER_CHAPTER - 1 ? activeChapter.bossName : nextWaveNote}</b></div>}
             {lives > 0 ? <button className="primary" disabled={running || wave >= WAVES_PER_CHAPTER || eventOpen || recruitChoices.length > 0 || bossRewardOpen || adventureComplete || !starterId} onClick={startWave}>{running ? paused ? "Battle paused" : wave === WAVES_PER_CHAPTER ? "Boss battle in progress…" : "Wave in progress…" : recruitChoices.length ? "Recruit a guardian" : eventOpen ? "Choose a forest event" : bossRewardOpen ? "Choose your boss reward" : adventureComplete ? "Adventure complete!" : wave >= WAVES_PER_CHAPTER ? `${activeChapter.region} protected!` : wave === WAVES_PER_CHAPTER - 1 ? `Challenge ${activeChapter.bossName}` : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Choose a new starter</button>}
             {wave > 0 && !running && <button className="textButton" onClick={resetBattle}>Restart with a new starter</button>}
