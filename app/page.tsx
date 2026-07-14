@@ -17,6 +17,15 @@ type AttackFx = { id: number; from: number; to: number; color: string; critterId
 type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal" };
 type StarterStats = { runs: number; victories: number; bossesDefeated: number; wavesCleared: number; highestChapter: number };
 type ChapterConfig = { number: number; region: string; title: string; theme: string; path: number[]; slots: number[]; bossName: string; bossIcon: string; goalIcon: string; goalName: string };
+type RunSave = {
+  version: 1; starterId: string; selected: string; chapter: number; wave: number;
+  energy: number; maxEnergy: number; lives: number; dewshards: number;
+  towers: { slot: number; critterId: string }[]; runUnlocked: string[];
+  eventBuffs: { harvest: number; spring: number; warden: number }; starCharmCount: number;
+  nextWaveNote: string; eventOpen: boolean; recruitChoices: string[]; bossRewardOpen: boolean;
+  gameSpeed: 1 | 2; waveHpMultiplier: number; waveExtraEnemies: number;
+  wavePetalBonus: number; runDamageMultiplier: number; savedAt: number;
+};
 
 const CRITTERS: Critter[] = [
   { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", tier: 1, starterEligible: true, ability: "burn", skill: "Kindle: burns its target for 20% damage over 3 ticks.", sprite: "./critters/emberfox-sprite.png" },
@@ -41,6 +50,8 @@ const CRITTERS: Critter[] = [
 
 const BOARD_SIZE = 8;
 const WAVES_PER_CHAPTER = 10;
+const META_SAVE_KEY = "critter-keepers-save";
+const RUN_SAVE_KEY = "critter-keepers-run";
 const STARTER_IDS = CRITTERS.filter(c => c.starterEligible).map(c => c.id);
 const starterBlessing = (id: string) => id === "emberfox" ? "+30 starting energy" : id === "bubblefin" ? "+3 Heart Tree health" : id === "mossback" ? "+15% guardian damage" : id === "sparkit" ? "+1 attack speed for all guardians" : id === "bloomwing" ? "Enemy shields are 25% weaker" : "+1 range for all guardians";
 const emptyStarterStats = (): Record<string, StarterStats> => Object.fromEntries(STARTER_IDS.map(id => [id, { runs: 0, victories: 0, bossesDefeated: 0, wavesCleared: 0, highestChapter: 0 }]));
@@ -141,26 +152,70 @@ export default function Home() {
   const activeSlots = activeChapter.slots;
 
   useEffect(() => {
-    const saved = localStorage.getItem("critter-keepers-save");
+    const saved = localStorage.getItem(META_SAVE_KEY);
     if (saved) {
       try {
         const data = JSON.parse(saved);
         setOwned(data.owned || owned);
         setPetals(data.petals ?? petals);
         if (data.stats) setStats({ ...emptyStarterStats(), ...data.stats });
-        setStarterId(data.starterId || null);
-        if (data.starterId) {
-          setSelected(data.starterId);
-          setRunUnlocked([data.starterId]);
-        }
       } catch { /* fresh save */ }
+    }
+
+    const savedRun = localStorage.getItem(RUN_SAVE_KEY);
+    if (savedRun) {
+      try {
+        const data = JSON.parse(savedRun) as RunSave;
+        const starter = CRITTERS.find(critter => critter.id === data.starterId && critter.starterEligible);
+        if (!starter || data.version !== 1) throw new Error("Invalid run save");
+        const restoredChapter = Math.min(CHAPTERS.length, Math.max(1, Number(data.chapter) || 1));
+        const restoredWave = Math.min(data.bossRewardOpen ? WAVES_PER_CHAPTER : WAVES_PER_CHAPTER - 1, Math.max(0, Number(data.wave) || 0));
+        const unlockedIds = Array.from(new Set([starter.id, ...(data.runUnlocked || [])])).filter(id => CRITTERS.some(critter => critter.id === id));
+        const restoredTowers = (data.towers || []).map(tower => {
+          const critter = CRITTERS.find(option => option.id === tower.critterId);
+          return critter && tower.slot >= 0 && tower.slot < CHAPTERS[restoredChapter - 1].slots.length ? { slot: tower.slot, critter, cooldown: 0 } : null;
+        }).filter(Boolean) as Tower[];
+        setStarterId(starter.id);
+        setSelected(CRITTERS.some(critter => critter.id === data.selected && unlockedIds.includes(critter.id)) ? data.selected : starter.id);
+        setChapter(restoredChapter);
+        setWave(restoredWave);
+        setEnergy(Math.max(0, Number(data.energy) || 0));
+        setMaxEnergy(Math.max(1, Number(data.maxEnergy) || 200));
+        setLives(Math.max(0, Number(data.lives) || 0));
+        setDewshards(Math.max(0, Number(data.dewshards) || 0));
+        setTowers(restoredTowers);
+        setRunUnlocked(unlockedIds);
+        setEventBuffs({ harvest: Math.max(0, data.eventBuffs?.harvest || 0), spring: Math.max(0, data.eventBuffs?.spring || 0), warden: Math.max(0, data.eventBuffs?.warden || 0) });
+        setStarCharmCount(Math.max(0, Number(data.starCharmCount) || 0));
+        setNextWaveNote(data.nextWaveNote || "No special conditions");
+        setEventOpen(Boolean(data.eventOpen));
+        setRecruitChoices((data.recruitChoices || []).map(id => CRITTERS.find(critter => critter.id === id)).filter(Boolean) as Critter[]);
+        setBossRewardOpen(Boolean(data.bossRewardOpen));
+        setGameSpeed(data.gameSpeed === 2 ? 2 : 1);
+        waveHpMultiplier.current = Math.max(0.1, Number(data.waveHpMultiplier) || 1);
+        waveExtraEnemies.current = Math.max(0, Number(data.waveExtraEnemies) || 0);
+        wavePetalBonus.current = Math.max(0, Number(data.wavePetalBonus) || 0);
+        runDamageMultiplier.current = Math.max(0.1, Number(data.runDamageMultiplier) || 1);
+        setMessage(restoredWave ? `Saved run restored after Chapter ${restoredChapter}, Wave ${restoredWave}.` : `Saved run restored in Chapter ${restoredChapter}.`);
+      } catch {
+        localStorage.removeItem(RUN_SAVE_KEY);
+      }
     }
     setSaveLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (saveLoaded) localStorage.setItem("critter-keepers-save", JSON.stringify({ owned, petals, starterId, stats }));
-  }, [owned, petals, starterId, stats, saveLoaded]);
+    if (saveLoaded) localStorage.setItem(META_SAVE_KEY, JSON.stringify({ owned, petals, stats }));
+  }, [owned, petals, stats, saveLoaded]);
+
+  useEffect(() => {
+    if (!saveLoaded) return;
+    if (!starterId || adventureComplete) {
+      localStorage.removeItem(RUN_SAVE_KEY);
+      return;
+    }
+    if (!running) saveRunState();
+  }, [saveLoaded, starterId, selected, chapter, wave, energy, maxEnergy, lives, dewshards, towers, runUnlocked, eventBuffs, starCharmCount, nextWaveNote, eventOpen, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, running]);
 
   useEffect(() => {
     if (!running || paused) return;
@@ -320,6 +375,36 @@ export default function Home() {
     window.setTimeout(() => setCombatNumbers(current => current.filter(number => number.id !== id)), 850);
   }
 
+  function saveRunState(waveOverride = wave) {
+    if (!starterId) return;
+    const runSave: RunSave = {
+      version: 1,
+      starterId,
+      selected,
+      chapter,
+      wave: waveOverride,
+      energy,
+      maxEnergy,
+      lives,
+      dewshards,
+      towers: towers.map(tower => ({ slot: tower.slot, critterId: tower.critter.id })),
+      runUnlocked,
+      eventBuffs,
+      starCharmCount,
+      nextWaveNote,
+      eventOpen,
+      recruitChoices: recruitChoices.map(critter => critter.id),
+      bossRewardOpen,
+      gameSpeed,
+      waveHpMultiplier: waveHpMultiplier.current,
+      waveExtraEnemies: waveExtraEnemies.current,
+      wavePetalBonus: wavePetalBonus.current,
+      runDamageMultiplier: runDamageMultiplier.current,
+      savedAt: Date.now(),
+    };
+    localStorage.setItem(RUN_SAVE_KEY, JSON.stringify(runSave));
+  }
+
   function chooseStarter(id: string) {
     const critter = CRITTERS.find(c => c.id === id)!;
     if (!critter.starterEligible || (critter.wishOnly && !owned.includes(id))) return;
@@ -436,6 +521,7 @@ export default function Home() {
   function startWave() {
     if (running || lives <= 0 || eventOpen || recruitChoices.length > 0 || bossRewardOpen || adventureComplete || !starterId) return;
     const next = wave + 1;
+    saveRunState(wave);
     setWave(next);
     spawnQueue.current = next === WAVES_PER_CHAPTER ? 1 : 5 + next * 2 + waveExtraEnemies.current;
     spawnTimer.current = 0;
@@ -460,6 +546,7 @@ export default function Home() {
   }
 
   function resetBattle() {
+    localStorage.removeItem(RUN_SAVE_KEY);
     setEnemies([]); setTowers([]); setWave(0); setChapter(1);
     setLives(10);
     setEnergy(120);
@@ -621,7 +708,7 @@ export default function Home() {
             <button className="primary" onClick={closeSettings}>{running ? "Resume battle" : "Return to game"}</button>
             <button className="restartButton" onClick={resetBattle}>Restart and choose a starter</button>
           </div>
-          <small>Restarting keeps petals and Critterbook discoveries, but resets the battle and temporary recruits.</small>
+          <small>Run progress saves automatically between waves. Restarting keeps petals and Critterbook discoveries, but clears the active run and temporary recruits.</small>
         </section>
       </div>}
 
