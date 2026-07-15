@@ -735,7 +735,7 @@ export default function Home() {
             <div className="sun"/><div className="cloud cloudOne">☁</div><div className="cloud cloudTwo">☁</div>
             {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, cell) => {
               const pathIndex = activePath.indexOf(cell);
-              return <div key={cell} className={`cell terrain-${cell % 4} ${pathIndex >= 0 ? `path path-${pathIndex % 4} ${pathRouteClass(activePath, pathIndex)}` : ""}`} />;
+              return <div key={cell} className={`cell terrain-${cell % 4} ${pathIndex >= 0 ? `path path-${pathIndex % 4} ${pathRouteClass(activePath, pathIndex)}` : ""}`} style={{"--cell-x": cell % BOARD_SIZE, "--cell-y": Math.floor(cell / BOARD_SIZE)} as React.CSSProperties}/>;
             })}
             <div className="meadowDecor" aria-hidden="true">
               <i className="flower flowerOne"/><i className="flower flowerTwo"/><i className="flower flowerThree"/>
