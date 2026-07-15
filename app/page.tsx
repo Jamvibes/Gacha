@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, ENEMY_CODEX, ENEMY_SPRITES, WAVES_PER_CHAPTER, emptyStarterStats, starterBlessing } from "./game/content";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
-import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, EventChoice, StarterStats, Tower } from "./game/types";
+import { useRunState } from "./game/use-run-state";
+import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, EventChoice, StarterStats } from "./game/types";
 
 const cellStyle = (cell: number) => {
   const point = cellPoint(cell);
@@ -30,36 +31,22 @@ export default function Home() {
   const [tab, setTab] = useState<"battle" | "collection" | "statistics" | "summon">("battle");
   const [owned, setOwned] = useState<string[]>([]);
   const [petals, setPetals] = useState(240);
-  const [dewshards, setDewshards] = useState(0);
-  const [lives, setLives] = useState(10);
-  const [wave, setWave] = useState(0);
-  const [chapter, setChapter] = useState(1);
-  const [mapSeed, setMapSeed] = useState(0);
-  const [mapVersion, setMapVersion] = useState<1 | 2>(2);
   const [enemies, setEnemies] = useState<Enemy[]>([]);
-  const [towers, setTowers] = useState<Tower[]>([]);
-  const [selected, setSelected] = useState("emberfox");
   const [message, setMessage] = useState("Choose a guardian, then place it on any tile away from the enemy path.");
   const [running, setRunning] = useState(false);
   const [summoned, setSummoned] = useState<Critter | null>(null);
-  const [starterId, setStarterId] = useState<string | null>(null);
-  const [eventOpen, setEventOpen] = useState(false);
-  const [nextWaveNote, setNextWaveNote] = useState("No special conditions");
   const [saveLoaded, setSaveLoaded] = useState(false);
-  const [runUnlocked, setRunUnlocked] = useState<string[]>([]);
-  const [guardianCopies, setGuardianCopies] = useState<Record<string, number>>({});
-  const [recruitChoices, setRecruitChoices] = useState<Critter[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [attackFx, setAttackFx] = useState<AttackFx[]>([]);
-  const [bossRewardOpen, setBossRewardOpen] = useState(false);
-  const [adventureComplete, setAdventureComplete] = useState(false);
-  const [gameSpeed, setGameSpeed] = useState<1 | 2>(1);
   const [inspectedTowerSlot, setInspectedTowerSlot] = useState<number | null>(null);
   const [combatNumbers, setCombatNumbers] = useState<CombatNumber[]>([]);
   const [stats, setStats] = useState<Record<string, StarterStats>>(emptyStarterStats);
-  const [eventBuffs, setEventBuffs] = useState({ harvest: 0, spring: 0, warden: 0 });
-  const [starCharmCount, setStarCharmCount] = useState(0);
+  const {
+    state: { dewshards, lives, wave, chapter, mapSeed, mapVersion, towers, selected, starterId, eventOpen, nextWaveNote, runUnlocked, guardianCopies, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, eventBuffs, starCharmCount },
+    setters: { setDewshards, setLives, setWave, setTowers, setSelected, setGuardianCopies, setGameSpeed, setStarCharmCount },
+    actions: { restoreRun, startRun, recruitRunGuardian, gainRunBlessing, finishRunWave, enterRunChapter, completeRun, resetRun },
+  } = useRunState();
   const enemyId = useRef(1);
   const attackId = useRef(1);
   const combatNumberId = useRef(1);
@@ -81,24 +68,7 @@ export default function Home() {
 
     const restored = readRunProgress(localStorage);
     if (restored) {
-      setStarterId(restored.starterId);
-      setSelected(restored.selected);
-      setChapter(restored.chapter);
-      setMapSeed(restored.mapSeed);
-      setMapVersion(restored.mapVersion);
-      setWave(restored.wave);
-      setLives(restored.lives);
-      setDewshards(restored.dewshards);
-      setTowers(restored.towers);
-      setRunUnlocked(restored.runUnlocked);
-      setGuardianCopies(restored.guardianCopies);
-      setEventBuffs(restored.eventBuffs);
-      setStarCharmCount(restored.starCharmCount);
-      setNextWaveNote(restored.nextWaveNote);
-      setEventOpen(restored.eventOpen);
-      setRecruitChoices(restored.recruitChoices);
-      setBossRewardOpen(restored.bossRewardOpen);
-      setGameSpeed(restored.gameSpeed);
+      restoreRun(restored);
       waveHpMultiplier.current = restored.waveHpMultiplier;
       waveExtraEnemies.current = restored.waveExtraEnemies;
       wavePetalBonus.current = restored.wavePetalBonus;
@@ -222,21 +192,13 @@ export default function Home() {
       setMessage(bossCleared ? `${activeChapter.bossName} was defeated! Choose a relic before the journey continues.` : `Wave ${wave} cleared! Your critters found ${reward} petals.`);
       if (starterId) setStats(current => ({ ...current, [starterId]: { ...current[starterId], wavesCleared: current[starterId].wavesCleared + 1, bossesDefeated: current[starterId].bossesDefeated + (bossCleared ? 1 : 0), highestChapter: Math.max(current[starterId].highestChapter, chapter) } }));
       wavePetalBonus.current = 0;
-      if (bossCleared) {
-        setBossRewardOpen(true);
-      } else if (wave < WAVES_PER_CHAPTER) {
-        if ([1, 3, 6].includes(wave)) {
-          const available = CRITTERS.filter(c => c.tier === 1 && (!c.wishOnly || owned.includes(c.id))).sort((a, b) => Number(runUnlocked.includes(a.id)) - Number(runUnlocked.includes(b.id)));
-          if (available.length) {
-            const offset = wave === 3 && available.length > 3 ? 1 : 0;
-            setRecruitChoices([...available.slice(offset, offset + 3), ...available.slice(0, offset)].slice(0, 3));
-          } else {
-            setEventOpen(true);
-          }
-        } else {
-          setEventOpen(true);
-        }
+      let choices: Critter[] = [];
+      if (!bossCleared && wave < WAVES_PER_CHAPTER && [1, 3, 6].includes(wave)) {
+        const available = CRITTERS.filter(c => c.tier === 1 && (!c.wishOnly || owned.includes(c.id))).sort((a, b) => Number(runUnlocked.includes(a.id)) - Number(runUnlocked.includes(b.id)));
+        const offset = wave === 3 && available.length > 3 ? 1 : 0;
+        choices = [...available.slice(offset, offset + 3), ...available.slice(0, offset)].slice(0, 3);
       }
+      finishRunWave(bossCleared, choices);
     }
   }, [enemies, running, wave, runUnlocked, chapter, activeChapter, eventBuffs.harvest, starterId, owned]);
 
@@ -308,25 +270,15 @@ export default function Home() {
   function chooseStarter(id: string) {
     const critter = CRITTERS.find(c => c.id === id)!;
     if (!critter.starterEligible || (critter.wishOnly && !owned.includes(id))) return;
-    setStarterId(id);
-    setMapSeed(Math.floor(Math.random() * 999999999) + 1);
-    setMapVersion(2);
-    setSelected(id);
-    setRunUnlocked([id]);
-    setGuardianCopies({ [id]: id === "emberfox" ? 2 : 1 });
+    startRun(id, Math.floor(Math.random() * 999999999) + 1);
     setOwned(current => current.includes(id) ? current : [...current, id]);
-    setLives(id === "bubblefin" ? 13 : 10);
     setStats(current => { const record = current[id] || emptyStarterStats()[id]; return { ...current, [id]: { ...record, runs: record.runs + 1, highestChapter: Math.max(1, record.highestChapter) } }; });
     setMessage(`${critter.name} has chosen you. Place your first guardian when you are ready!`);
   }
 
   function recruitGuardian(id: string) {
     const critter = CRITTERS.find(c => c.id === id)!;
-    setRunUnlocked(current => current.includes(id) ? current : [...current, id]);
-    setGuardianCopies(current => ({ ...current, [id]: (current[id] || 0) + 1 }));
-    setSelected(id);
-    setRecruitChoices([]);
-    setNextWaveNote(`${critter.name} granted an extra guardian copy`);
+    recruitRunGuardian(critter);
     setMessage(`${critter.name} answered your call. You can place one additional copy for the rest of this run!`);
   }
 
@@ -346,37 +298,26 @@ export default function Home() {
   }
 
   function chooseEvent(choice: EventChoice) {
+    gainRunBlessing(choice, selectedCritter.name);
     if (choice === "harvest") {
       setPetals(p => p + 55);
-      setDewshards(shards => shards + 2);
-      setEventBuffs(buffs => ({ ...buffs, harvest: buffs.harvest + 1 }));
       waveHpMultiplier.current = 1.35;
       waveExtraEnemies.current = 0;
       wavePetalBonus.current = 25;
-      setNextWaveNote("Gloomblessing: enemies have 35% more health • +25 clear reward");
       setMessage("The Moonbloom Covenant blesses this run with 5 extra petals per clear.");
     } else if (choice === "spring") {
-      setGuardianCopies(current => ({ ...current, [selected]: (current[selected] || 0) + 1 }));
-      setDewshards(shards => shards + 1);
-      setEventBuffs(buffs => ({ ...buffs, spring: buffs.spring + 1 }));
       waveHpMultiplier.current = 1;
       waveExtraEnemies.current = 0;
       wavePetalBonus.current = 0;
-      setNextWaveNote(`${selectedCritter.name}'s echo: +1 placeable copy • normal enemy strength`);
       setMessage(`The Echoing Spring created one additional ${selectedCritter.name} copy for this run.`);
     } else {
-      setLives(l => Math.min(20, l + 2));
       addCombatNumber(activePath[activePath.length - 1], 2, "heal");
-      setDewshards(shards => shards + 1);
-      setEventBuffs(buffs => ({ ...buffs, warden: buffs.warden + 1 }));
       runDamageMultiplier.current *= 1.05;
       waveHpMultiplier.current = 1;
       waveExtraEnemies.current = 3;
       wavePetalBonus.current = 20;
-      setNextWaveNote("Root pact: +2 Heart Tree health • 3 extra enemies • +20 clear reward");
       setMessage("The Oath of the Deep Roots blesses every guardian with 5% additional damage.");
     }
-    setEventOpen(false);
   }
 
   function chooseBossReward(reward: BossReward) {
@@ -393,26 +334,20 @@ export default function Home() {
       setMessage("Astral Guardian's Grace grants every guardian 25% more damage for this run.");
     }
     setPetals(p => p + (chapter === CHAPTERS.length ? 150 : 75));
-    setBossRewardOpen(false);
 
     if (chapter < CHAPTERS.length) {
       const nextChapter = CHAPTERS[chapter];
       if (starterId) setStats(current => ({ ...current, [starterId]: { ...current[starterId], highestChapter: Math.max(current[starterId].highestChapter, chapter + 1) } }));
-      setChapter(c => c + 1);
-      setWave(0);
+      enterRunChapter(chapter + 1);
       setEnemies([]);
-      setTowers([]);
       setAttackFx([]);
-      setEventOpen(false);
-      setRecruitChoices([]);
-      setNextWaveNote("A new region awaits");
       spawnQueue.current = 0;
       waveHpMultiplier.current = 1;
       waveExtraEnemies.current = 0;
       wavePetalBonus.current = 0;
       window.setTimeout(() => setMessage(`Chapter ${nextChapter.number}: ${nextChapter.region}. Place your guardians for the road ahead!`), 0);
     } else {
-      setAdventureComplete(true);
+      completeRun();
       if (starterId) setStats(current => ({ ...current, [starterId]: { ...current[starterId], victories: current[starterId].victories + 1 } }));
       setMessage("All three regions are safe. The Critter Keepers completed their adventure!");
     }
@@ -448,17 +383,9 @@ export default function Home() {
 
   function resetBattle() {
     clearRunProgress(localStorage);
-    setEnemies([]); setTowers([]); setWave(0); setChapter(1);
-    setLives(10);
-    setDewshards(0);
-    setRunning(false); setPaused(false); setSettingsOpen(false); setEventOpen(false); setRecruitChoices([]); setAttackFx([]); setCombatNumbers([]); setInspectedTowerSlot(null); setBossRewardOpen(false); setAdventureComplete(false); setNextWaveNote("No special conditions");
-    setStarterId(null);
-    setMapSeed(0);
-    setMapVersion(2);
-    setRunUnlocked([]);
-    setGuardianCopies({});
-    setSelected("emberfox");
-    setEventBuffs({ harvest: 0, spring: 0, warden: 0 }); setStarCharmCount(0);
+    resetRun();
+    setEnemies([]);
+    setRunning(false); setPaused(false); setSettingsOpen(false); setAttackFx([]); setCombatNumbers([]); setInspectedTowerSlot(null);
     spawnQueue.current = 0; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; wavePetalBonus.current = 0; runDamageMultiplier.current = 1;
     setMessage("Choose a starter for your new adventure.");
   }
