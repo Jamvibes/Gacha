@@ -43,6 +43,8 @@ export type BossReward = "heartseed" | "embercore" | "starcharm";
 export type AttackFx = { id: number; from: number; to: number; color: string; critterId: string };
 export type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal" };
 export type StarterStats = { runs: number; victories: number; bossesDefeated: number; wavesCleared: number; highestChapter: number };
+export type BlessingCounts = { harvest: number; spring: number; warden: number };
+export type MetaProgress = { version: 1; owned: string[]; petals: number; stats: Record<string, StarterStats> };
 
 export type ChapterConfig = {
   number: number;
@@ -84,7 +86,7 @@ export type RunSave = {
   guardianCopies?: Record<string, number>;
   mapSeed?: number;
   mapVersion?: 1 | 2;
-  eventBuffs: { harvest: number; spring: number; warden: number };
+  eventBuffs: BlessingCounts;
   starCharmCount: number;
   nextWaveNote: string;
   eventOpen: boolean;
@@ -96,4 +98,29 @@ export type RunSave = {
   wavePetalBonus: number;
   runDamageMultiplier: number;
   savedAt: number;
+};
+
+export type RestoredRun = {
+  starterId: string;
+  selected: string;
+  chapter: number;
+  wave: number;
+  mapSeed: number;
+  mapVersion: 1 | 2;
+  lives: number;
+  dewshards: number;
+  towers: Tower[];
+  runUnlocked: string[];
+  guardianCopies: Record<string, number>;
+  eventBuffs: BlessingCounts;
+  starCharmCount: number;
+  nextWaveNote: string;
+  eventOpen: boolean;
+  recruitChoices: Critter[];
+  bossRewardOpen: boolean;
+  gameSpeed: 1 | 2;
+  waveHpMultiplier: number;
+  waveExtraEnemies: number;
+  wavePetalBonus: number;
+  runDamageMultiplier: number;
 };

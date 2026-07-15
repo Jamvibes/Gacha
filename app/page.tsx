@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BOARD_SIZE, CHAPTERS, CRITTERS, ENEMY_CODEX, ENEMY_SPRITES, META_SAVE_KEY, RUN_SAVE_KEY, WAVES_PER_CHAPTER, emptyStarterStats, rootCritterId, starterBlessing } from "./game/content";
+import { BOARD_SIZE, CHAPTERS, CRITTERS, ENEMY_CODEX, ENEMY_SPRITES, WAVES_PER_CHAPTER, emptyStarterStats, starterBlessing } from "./game/content";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
-import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, EventChoice, RunSave, StarterStats, Tower } from "./game/types";
+import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
+import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, EventChoice, StarterStats, Tower } from "./game/types";
 
 const cellStyle = (cell: number) => {
   const point = cellPoint(cell);
@@ -73,77 +74,48 @@ export default function Home() {
   const placeableCells = useMemo(() => Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, cell) => cell).filter(cell => !activePath.includes(cell)), [activePath]);
 
   useEffect(() => {
-    const saved = localStorage.getItem(META_SAVE_KEY);
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        setOwned(data.owned || owned);
-        setPetals(data.petals ?? petals);
-        if (data.stats) setStats({ ...emptyStarterStats(), ...data.stats });
-      } catch { /* fresh save */ }
-    }
+    const progress = readMetaProgress(localStorage);
+    setOwned(progress.owned);
+    setPetals(progress.petals);
+    setStats(progress.stats);
 
-    const savedRun = localStorage.getItem(RUN_SAVE_KEY);
-    if (savedRun) {
-      try {
-        const data = JSON.parse(savedRun) as RunSave;
-        const starter = CRITTERS.find(critter => critter.id === data.starterId && critter.starterEligible);
-        if (!starter || ![1, 2].includes(data.version)) throw new Error("Invalid run save");
-        const restoredChapter = Math.min(CHAPTERS.length, Math.max(1, Number(data.chapter) || 1));
-        const restoredMapSeed = Math.max(0, Math.floor(Number(data.mapSeed) || 0));
-        const restoredMapVersion: 1 | 2 = data.mapVersion === 2 ? 2 : 1;
-        const restoredWave = Math.min(data.bossRewardOpen ? WAVES_PER_CHAPTER : WAVES_PER_CHAPTER - 1, Math.max(0, Number(data.wave) || 0));
-        const unlockedIds = Array.from(new Set([starter.id, ...(data.runUnlocked || [])])).filter(id => CRITTERS.some(critter => critter.id === id));
-        const restoredPath = generateChapterPath(restoredMapSeed, restoredChapter, restoredMapVersion);
-        const restoredTowers = (data.towers || []).map(tower => {
-          const critter = CRITTERS.find(option => option.id === tower.critterId);
-          const cell = data.version === 1 ? CHAPTERS[restoredChapter - 1].slots[tower.slot] : tower.slot;
-          const sourceId = tower.sourceId && unlockedIds.includes(tower.sourceId) ? tower.sourceId : rootCritterId(tower.critterId);
-          return critter && cell >= 0 && cell < BOARD_SIZE * BOARD_SIZE && !restoredPath.includes(cell) ? { slot: cell, critter, cooldown: 0, sourceId } : null;
-        }).filter(Boolean) as Tower[];
-        const restoredCopies = unlockedIds.reduce<Record<string, number>>((copies, id) => {
-          const placed = restoredTowers.filter(tower => tower.sourceId === id).length;
-          copies[id] = Math.max(1, Number(data.guardianCopies?.[id]) || 0, placed);
-          return copies;
-        }, {});
-        setStarterId(starter.id);
-        setSelected(CRITTERS.some(critter => critter.id === data.selected && unlockedIds.includes(critter.id)) ? data.selected : starter.id);
-        setChapter(restoredChapter);
-        setMapSeed(restoredMapSeed);
-        setMapVersion(restoredMapVersion);
-        setWave(restoredWave);
-        setLives(Math.max(0, Number(data.lives) || 0));
-        setDewshards(Math.max(0, Number(data.dewshards) || 0));
-        setTowers(restoredTowers);
-        setRunUnlocked(unlockedIds);
-        setGuardianCopies(restoredCopies);
-        setEventBuffs({ harvest: Math.max(0, data.eventBuffs?.harvest || 0), spring: Math.max(0, data.eventBuffs?.spring || 0), warden: Math.max(0, data.eventBuffs?.warden || 0) });
-        setStarCharmCount(Math.max(0, Number(data.starCharmCount) || 0));
-        setNextWaveNote(data.nextWaveNote || "No special conditions");
-        setEventOpen(Boolean(data.eventOpen));
-        setRecruitChoices((data.recruitChoices || []).map(id => CRITTERS.find(critter => critter.id === id)).filter(Boolean) as Critter[]);
-        setBossRewardOpen(Boolean(data.bossRewardOpen));
-        setGameSpeed(data.gameSpeed === 2 ? 2 : 1);
-        waveHpMultiplier.current = Math.max(0.1, Number(data.waveHpMultiplier) || 1);
-        waveExtraEnemies.current = Math.max(0, Number(data.waveExtraEnemies) || 0);
-        wavePetalBonus.current = Math.max(0, Number(data.wavePetalBonus) || 0);
-        runDamageMultiplier.current = Math.max(0.1, Number(data.runDamageMultiplier) || 1);
-        setMessage(restoredWave ? `Saved run restored after Chapter ${restoredChapter}, Wave ${restoredWave}.` : `Saved run restored in Chapter ${restoredChapter}.`);
-      } catch {
-        localStorage.removeItem(RUN_SAVE_KEY);
-      }
+    const restored = readRunProgress(localStorage);
+    if (restored) {
+      setStarterId(restored.starterId);
+      setSelected(restored.selected);
+      setChapter(restored.chapter);
+      setMapSeed(restored.mapSeed);
+      setMapVersion(restored.mapVersion);
+      setWave(restored.wave);
+      setLives(restored.lives);
+      setDewshards(restored.dewshards);
+      setTowers(restored.towers);
+      setRunUnlocked(restored.runUnlocked);
+      setGuardianCopies(restored.guardianCopies);
+      setEventBuffs(restored.eventBuffs);
+      setStarCharmCount(restored.starCharmCount);
+      setNextWaveNote(restored.nextWaveNote);
+      setEventOpen(restored.eventOpen);
+      setRecruitChoices(restored.recruitChoices);
+      setBossRewardOpen(restored.bossRewardOpen);
+      setGameSpeed(restored.gameSpeed);
+      waveHpMultiplier.current = restored.waveHpMultiplier;
+      waveExtraEnemies.current = restored.waveExtraEnemies;
+      wavePetalBonus.current = restored.wavePetalBonus;
+      runDamageMultiplier.current = restored.runDamageMultiplier;
+      setMessage(restored.wave ? `Saved run restored after Chapter ${restored.chapter}, Wave ${restored.wave}.` : `Saved run restored in Chapter ${restored.chapter}.`);
     }
     setSaveLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (saveLoaded) localStorage.setItem(META_SAVE_KEY, JSON.stringify({ owned, petals, stats }));
+    if (saveLoaded) writeMetaProgress(localStorage, { owned, petals, stats });
   }, [owned, petals, stats, saveLoaded]);
 
   useEffect(() => {
     if (!saveLoaded) return;
     if (!starterId || adventureComplete) {
-      localStorage.removeItem(RUN_SAVE_KEY);
+      clearRunProgress(localStorage);
       return;
     }
     if (!running) saveRunState();
@@ -307,8 +279,7 @@ export default function Home() {
 
   function saveRunState(waveOverride = wave) {
     if (!starterId) return;
-    const runSave: RunSave = {
-      version: 2,
+    writeRunProgress(localStorage, {
       starterId,
       selected,
       chapter,
@@ -331,9 +302,7 @@ export default function Home() {
       waveExtraEnemies: waveExtraEnemies.current,
       wavePetalBonus: wavePetalBonus.current,
       runDamageMultiplier: runDamageMultiplier.current,
-      savedAt: Date.now(),
-    };
-    localStorage.setItem(RUN_SAVE_KEY, JSON.stringify(runSave));
+    });
   }
 
   function chooseStarter(id: string) {
@@ -478,7 +447,7 @@ export default function Home() {
   }
 
   function resetBattle() {
-    localStorage.removeItem(RUN_SAVE_KEY);
+    clearRunProgress(localStorage);
     setEnemies([]); setTowers([]); setWave(0); setChapter(1);
     setLives(10);
     setDewshards(0);
