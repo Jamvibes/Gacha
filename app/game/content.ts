@@ -1,0 +1,60 @@
+import type { ChapterConfig, Critter, EnemyCodexEntry, StarterStats } from "./types.ts";
+
+export const BOARD_SIZE = 8;
+export const WAVES_PER_CHAPTER = 10;
+export const META_SAVE_KEY = "critter-keepers-save";
+export const RUN_SAVE_KEY = "critter-keepers-run";
+
+export const CRITTERS: Critter[] = [
+  { id: "emberfox", name: "Emberfox", title: "Tiny Flame", icon: "🦊", color: "#ff8a5b", cost: 40, damage: 18, speed: 2, range: 2, rarity: "Common", tier: 1, starterEligible: true, ability: "burn", skill: "Kindle: burns its target for 20% damage over 3 ticks.", sprite: "./critters/emberfox-sprite.png" },
+  { id: "bubblefin", name: "Bubblefin", title: "Puddle Pal", icon: "🐟", sprite: "./critters/bubblefin-sprite.png", color: "#54bde8", cost: 55, damage: 12, speed: 3, range: 3, rarity: "Common", tier: 1, starterEligible: true, ability: "waterSplash", skill: "Bubble Burst: splashes its target and nearby enemies." },
+  { id: "mossback", name: "Mossback", title: "Gentle Guard", icon: "🐢", sprite: "./critters/mossback-sprite.png", color: "#6fc174", cost: 65, damage: 32, speed: 5, range: 1, rarity: "Common", tier: 1, starterEligible: true, ability: "slow", skill: "Root Slam: slows its target by 45% for 4 ticks." },
+  { id: "sparkit", name: "Sparkit", title: "Storm Kitten", icon: "🐱", sprite: "./critters/sparkit-sprite.png", color: "#f5c84b", cost: 75, damage: 23, speed: 3, range: 2, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "chain", skill: "Chain Spark: arcs to 2 additional enemies in range." },
+  { id: "bloomwing", name: "Bloomwing", title: "Garden Sprite", icon: "🦋", sprite: "./critters/bloomwing-sprite.png", color: "#e982b5", cost: 80, damage: 28, speed: 3, range: 3, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "shieldPierce", skill: "Petal Needle: pierces shields and strikes health directly." },
+  { id: "moonowl", name: "Moonowl", title: "Star Watcher", icon: "🦉", sprite: "./critters/moonowl-sprite.png", color: "#9b88e8", cost: 95, damage: 48, speed: 5, range: 4, rarity: "Common", tier: 1, starterEligible: true, wishOnly: true, ability: "beam", skill: "Moonbeam: pierces up to 4 enemies with fading damage." },
+  { id: "cinderpup", name: "Cinderpup", title: "Blazing Scout", icon: "🐕", color: "#f36f45", cost: 70, damage: 27, speed: 2, range: 2, rarity: "Rare", tier: 2, ability: "burn", skill: "Bright Kindle: burns for 25% damage over 4 ticks.", evolutionPath: "core", upgradeOf: "emberfox", sprite: "./critters/cinderpup-sprite.png" },
+  { id: "ripplefin", name: "Ripplefin", title: "River Dancer", icon: "🐠", sprite: "./critters/ripplefin-sprite.png", color: "#3db6df", cost: 82, damage: 18, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "waterSplash", skill: "Ripple Burst: creates a wider splash with stronger secondary damage.", evolutionPath: "core", upgradeOf: "bubblefin" },
+  { id: "thornshell", name: "Thornshell", title: "Bramble Bulwark", icon: "🦔", sprite: "./critters/thornshell-sprite.png", color: "#58a45f", cost: 92, damage: 45, speed: 4, range: 2, rarity: "Rare", tier: 2, ability: "slow", skill: "Bramble Slam: slows enemies by 53% for 5 ticks.", evolutionPath: "core", upgradeOf: "mossback" },
+  { id: "voltlynx", name: "Voltlynx", title: "Thunder Prowler", icon: "🐈", sprite: "./critters/voltlynx-sprite.png", color: "#eab72f", cost: 100, damage: 33, speed: 3, range: 3, rarity: "Rare", tier: 2, ability: "chain", skill: "Forked Spark: chains to 3 additional enemies with stronger arcs.", evolutionPath: "core", upgradeOf: "sparkit" },
+  { id: "briarwing", name: "Briarwing", title: "Thorn Dancer", icon: "🦋", sprite: "./critters/briarwing-sprite.png", color: "#d95d9d", cost: 105, damage: 40, speed: 3, range: 4, rarity: "Rare", tier: 2, ability: "shieldPierce", skill: "Briar Needle: bypasses shields and deals bonus damage to shielded foes.", evolutionPath: "core", upgradeOf: "bloomwing" },
+  { id: "duskowl", name: "Duskowl", title: "Twilight Seer", icon: "🦉", sprite: "./critters/duskowl-sprite.png", color: "#7967cf", cost: 120, damage: 66, speed: 4, range: 4, rarity: "Rare", tier: 2, ability: "beam", skill: "Duskbeam: pierces 5 enemies and loses less damage between targets.", evolutionPath: "core", upgradeOf: "moonowl" },
+  { id: "embermane", name: "Embermane", title: "Wildfire Heir", icon: "🐺", color: "#f04f45", cost: 112, damage: 40, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "burn", skill: "Wildfire: burns for 30% damage over 5 ticks.", evolutionPath: "core", upgradeOf: "cinderpup", sprite: "./critters/embermane-sprite.png" },
+  { id: "tidecaller", name: "Tidecaller", title: "Ocean Oracle", icon: "🐬", sprite: "./critters/tidecaller-sprite.png", color: "#279fd1", cost: 122, damage: 28, speed: 2, range: 4, rarity: "Legendary", tier: 3, ability: "waterSplash", skill: "Tidal Burst: creates the largest splash with powerful secondary damage.", evolutionPath: "core", upgradeOf: "ripplefin" },
+  { id: "eldermoss", name: "Eldermoss", title: "Ancient Grove", icon: "🦕", sprite: "./critters/eldermoss-sprite.png", color: "#438f58", cost: 132, damage: 62, speed: 4, range: 2, rarity: "Legendary", tier: 3, ability: "slow", skill: "Worldroot Slam: slows its target by 60% for 6 ticks.", evolutionPath: "core", upgradeOf: "thornshell" },
+  { id: "stormsabre", name: "Stormsabre", title: "Skyfang Regent", icon: "🐯", sprite: "./critters/stormsabre-sprite.png", color: "#d99b1f", cost: 138, damage: 48, speed: 2, range: 3, rarity: "Legendary", tier: 3, ability: "chain", skill: "Tempest Chain: arcs through 5 enemies while retaining most of its power.", evolutionPath: "core", upgradeOf: "voltlynx" },
+  { id: "crownwing", name: "Crownwing", title: "Royal Petalblade", icon: "🦚", sprite: "./critters/crownwing-sprite.png", color: "#bd4b91", cost: 142, damage: 58, speed: 3, range: 4, rarity: "Legendary", tier: 3, ability: "shieldPierce", skill: "Crown Needle: ignores shields and punishes shielded enemies for 30% bonus damage.", evolutionPath: "core", upgradeOf: "briarwing" },
+  { id: "celestowl", name: "Celestowl", title: "Astral Witness", icon: "🦅", sprite: "./critters/celestowl-sprite.png", color: "#6552bb", cost: 155, damage: 86, speed: 4, range: 5, rarity: "Legendary", tier: 3, ability: "beam", skill: "Starfall Beam: pierces 6 enemies with only slight damage falloff.", evolutionPath: "core", upgradeOf: "duskowl" },
+];
+
+export const CHAPTERS: ChapterConfig[] = [
+  { number: 1, region: "Sundew Meadow", title: "Whispers in the Clover", theme: "chapter-one", path: [8,9,10,11,19,27,26,25,24,32,40,41,42,43,44,36,28,20,21,22,23,31,39,47,46,45,53,54,55,63], slots: [2,5,13,17,30,34,38,49,51,60], bossName: "The Thornmaw", bossIcon: "🐲", goalIcon: "🌳", goalName: "HEART TREE" },
+  { number: 2, region: "Moonpetal Marsh", title: "Lanterns in the Mist", theme: "chapter-two", path: [0,8,16,17,18,10,11,12,20,28,36,35,34,42,50,51,52,53,45,37,38,39,47,55,63], slots: [2,6,14,22,25,30,41,44,49,60], bossName: "The Mire Monarch", bossIcon: "🐙", goalIcon: "🪷", goalName: "MOON LOTUS" },
+  { number: 3, region: "Starlight Canopy", title: "The Crown Above", theme: "chapter-three", path: [56,48,40,41,42,34,26,18,19,20,21,29,37,45,46,47,39,31,23,15,7], slots: [49,58,33,36,43,51,27,30,14,5], bossName: "The Hollow Crown", bossIcon: "👑", goalIcon: "💎", goalName: "STAR CRYSTAL" },
+];
+
+export const ENEMY_SPRITES: Record<string, string> = {
+  Gloomling: "./enemies/gloomling-sprite.png",
+  "Bramble Brute": "./enemies/bramble-brute-sprite.png",
+  "The Thornmaw": "./enemies/thornmaw-sprite.png",
+  "The Mire Monarch": "./enemies/mire-monarch-sprite.png",
+  "The Hollow Crown": "./enemies/hollow-crown-sprite.png",
+};
+
+export const ENEMY_CODEX: EnemyCodexEntry[] = [
+  { name: "Gloomling", title: "Restless Shadow", icon: "👾", chapter: "All chapters", role: "Common foe", defence: "No shield", ability: "Skitter: steady movement with no armour.", color: "#816d9d" },
+  { name: "Bramble Brute", title: "Armoured Thicket", icon: "👹", chapter: "All chapters", role: "Shielded foe", defence: "Barkshield: 35% shield", ability: "Barkshield protects it until guardians break through the extra barrier.", color: "#71824e" },
+  { name: "The Thornmaw", title: "Meadow Devourer", icon: "🐲", chapter: "Chapter 1 · Sundew Meadow", role: "Boss", defence: "Royal Ward: 20% shield", ability: "A colossal creature with exceptional health and a protective ward.", color: "#9a5b69", boss: true },
+  { name: "The Mire Monarch", title: "Sovereign of the Mist", icon: "🐙", chapter: "Chapter 2 · Moonpetal Marsh", role: "Boss", defence: "Royal Ward: 20% shield", ability: "Rules the marsh with colossal health and a protective ward.", color: "#567d83", boss: true },
+  { name: "The Hollow Crown", title: "Starless Usurper", icon: "👑", chapter: "Chapter 3 · Starlight Canopy", role: "Final boss", defence: "Royal Ward: 20% shield", ability: "The final guardian of the Gloom, fortified by colossal health and a protective ward.", color: "#6e588d", boss: true },
+];
+
+export const STARTER_IDS = CRITTERS.filter(critter => critter.starterEligible).map(critter => critter.id);
+
+export function rootCritterId(id: string): string {
+  const critter = CRITTERS.find(option => option.id === id);
+  return critter?.upgradeOf ? rootCritterId(critter.upgradeOf) : id;
+}
+
+export const starterBlessing = (id: string) => id === "emberfox" ? "+1 extra Emberfox copy" : id === "bubblefin" ? "+3 Heart Tree health" : id === "mossback" ? "+15% guardian damage" : id === "sparkit" ? "+1 attack speed for all guardians" : id === "bloomwing" ? "Enemy shields are 25% weaker" : "+1 range for all guardians";
+
+export const emptyStarterStats = (): Record<string, StarterStats> => Object.fromEntries(STARTER_IDS.map(id => [id, { runs: 0, victories: 0, bossesDefeated: 0, wavesCleared: 0, highestChapter: 0 }]));

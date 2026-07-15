@@ -1,0 +1,99 @@
+export type AbilityId = "burn" | "waterSplash" | "slow" | "chain" | "shieldPierce" | "beam";
+
+export type Critter = {
+  id: string;
+  name: string;
+  title: string;
+  icon: string;
+  color: string;
+  cost: number;
+  damage: number;
+  speed: number;
+  range: number;
+  rarity: "Common" | "Rare" | "Epic" | "Legendary";
+  skill: string;
+  ability: AbilityId;
+  tier: 1 | 2 | 3;
+  starterEligible?: boolean;
+  wishOnly?: boolean;
+  upgradeOf?: string;
+  evolutionPath?: "core" | "alternative";
+  sprite?: string;
+};
+
+export type Enemy = {
+  id: number;
+  step: number;
+  hp: number;
+  maxHp: number;
+  shield: number;
+  maxShield: number;
+  kind: string;
+  icon: string;
+  boss?: boolean;
+  burnTicks?: number;
+  burnDamage?: number;
+  slowTicks?: number;
+  slowFactor?: number;
+};
+
+export type Tower = { slot: number; critter: Critter; cooldown: number; sourceId: string };
+export type EventChoice = "harvest" | "spring" | "warden";
+export type BossReward = "heartseed" | "embercore" | "starcharm";
+export type AttackFx = { id: number; from: number; to: number; color: string; critterId: string };
+export type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal" };
+export type StarterStats = { runs: number; victories: number; bossesDefeated: number; wavesCleared: number; highestChapter: number };
+
+export type ChapterConfig = {
+  number: number;
+  region: string;
+  title: string;
+  theme: string;
+  path: number[];
+  slots: number[];
+  bossName: string;
+  bossIcon: string;
+  goalIcon: string;
+  goalName: string;
+};
+
+export type EnemyCodexEntry = {
+  name: string;
+  title: string;
+  icon: string;
+  chapter: string;
+  role: string;
+  defence: string;
+  ability: string;
+  color: string;
+  boss?: boolean;
+};
+
+export type RunSave = {
+  version: 1 | 2;
+  starterId: string;
+  selected: string;
+  chapter: number;
+  wave: number;
+  energy?: number;
+  maxEnergy?: number;
+  lives: number;
+  dewshards: number;
+  towers: { slot: number; critterId: string; sourceId?: string }[];
+  runUnlocked: string[];
+  guardianCopies?: Record<string, number>;
+  mapSeed?: number;
+  mapVersion?: 1 | 2;
+  eventBuffs: { harvest: number; spring: number; warden: number };
+  starCharmCount: number;
+  nextWaveNote: string;
+  eventOpen: boolean;
+  recruitChoices: string[];
+  bossRewardOpen: boolean;
+  gameSpeed: 1 | 2;
+  waveHpMultiplier: number;
+  waveExtraEnemies: number;
+  wavePetalBonus: number;
+  runDamageMultiplier: number;
+  savedAt: number;
+};
