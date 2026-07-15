@@ -105,19 +105,26 @@ function generateChapterPath(seed: number, chapter: number) {
     value ^= value + Math.imul(value ^ value >>> 7, value | 61);
     return ((value ^ value >>> 14) >>> 0) / 4294967296;
   };
-  let row = Math.floor(random() * BOARD_SIZE);
-  const basePath = [row * BOARD_SIZE];
-  for (let column = 1; column < BOARD_SIZE; column++) {
-    basePath.push(row * BOARD_SIZE + column);
-    const candidates = [-2, -1, 1, 2].map(change => row + change).filter(nextRow => nextRow >= 0 && nextRow < BOARD_SIZE);
-    const targetRow = candidates[Math.floor(random() * candidates.length)];
-    while (row !== targetRow) {
-      row += Math.sign(targetRow - row);
-      basePath.push(row * BOARD_SIZE + column);
+  const laneBands = [[0, 1], [2, 3], [4, 5], [6, 7]];
+  const lanes = laneBands.map(band => band[Math.floor(random() * band.length)]);
+  const basePath: number[] = [];
+  let column = random() < 0.5 ? 0 : BOARD_SIZE - 1;
+  let direction = column === 0 ? 1 : -1;
+  lanes.forEach((lane, laneIndex) => {
+    if (laneIndex > 0) {
+      const previousLane = lanes[laneIndex - 1];
+      for (let connectorRow = previousLane + 1; connectorRow <= lane; connectorRow++) basePath.push(connectorRow * BOARD_SIZE + column);
+    } else {
+      basePath.push(lane * BOARD_SIZE + column);
     }
-  }
+    while (column + direction >= 0 && column + direction < BOARD_SIZE) {
+      column += direction;
+      basePath.push(lane * BOARD_SIZE + column);
+    }
+    direction *= -1;
+  });
   const rotation = (seed + chapter) % 4;
-  return basePath.map(cell => {
+  const path = basePath.map(cell => {
     const sourceRow = Math.floor(cell / BOARD_SIZE);
     const sourceColumn = cell % BOARD_SIZE;
     if (rotation === 1) return sourceColumn * BOARD_SIZE + (BOARD_SIZE - 1 - sourceRow);
@@ -125,6 +132,11 @@ function generateChapterPath(seed: number, chapter: number) {
     if (rotation === 3) return (BOARD_SIZE - 1 - sourceColumn) * BOARD_SIZE + sourceRow;
     return cell;
   });
+  const rows = path.map(cell => Math.floor(cell / BOARD_SIZE));
+  const columns = path.map(cell => cell % BOARD_SIZE);
+  const reachesEveryEdge = Math.min(...rows) <= 1 && Math.max(...rows) >= BOARD_SIZE - 2 && Math.min(...columns) <= 1 && Math.max(...columns) >= BOARD_SIZE - 2;
+  if (path.length < 30 || path.length > 40 || new Set(path).size !== path.length || !reachesEveryEdge) throw new Error("Generated path did not satisfy the map rules");
+  return path;
 }
 
 const cellPoint = (cell: number) => ({
