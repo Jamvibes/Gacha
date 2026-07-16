@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, ENEMY_CODEX, ENEMY_SPRITES, WAVES_PER_CHAPTER, emptyStarterStats, starterBlessing } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
+import { BASE_CRITICAL_CHANCE, calculateHitDamage, pushBackDistance, rollCritical, selectAbilityHits } from "./game/abilities";
 import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
@@ -140,17 +141,7 @@ export default function Home() {
             const starterBoost = starterId === "mossback" ? 1.15 : 1;
             const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current);
             const abilityRank = t.critter.tier - 1;
-            let hits: { enemy: Enemy; multiplier: number }[] = [{ enemy: target, multiplier: 1 }];
-            if (t.critter.ability === "waterSplash") {
-              const splashRadius = 1.6 + abilityRank * 0.35;
-              const splashLimit = 4 + abilityRank;
-              const splashDamage = 0.65 + abilityRank * 0.075;
-              hits = sortedTargets.filter(enemy => Math.abs(enemy.step - target.step) <= splashRadius).slice(0, splashLimit).map((enemy, index) => ({ enemy, multiplier: index ? splashDamage : 1 }));
-            } else if (t.critter.ability === "chain") {
-              hits = sortedTargets.slice(0, 3 + abilityRank).map((enemy, index) => ({ enemy, multiplier: index ? 0.65 + abilityRank * 0.075 : 1 }));
-            } else if (t.critter.ability === "beam") {
-              hits = sortedTargets.slice(0, 4 + abilityRank).map((enemy, index) => ({ enemy, multiplier: Math.max(0.4, 1 - index * (0.18 - abilityRank * 0.03)) }));
-            }
+            const hits = selectAbilityHits(t.critter.ability, t.critter.tier, next, sortedTargets, target, activePath);
             if (t.critter.ability === "burn") {
               target.burnTicks = Math.max(target.burnTicks || 0, 3 + abilityRank);
               target.burnDamage = Math.max(target.burnDamage || 0, Math.round(baseDamage * (0.2 + abilityRank * 0.05)));
@@ -161,10 +152,12 @@ export default function Home() {
             fired.push(t.slot);
             const newEffects: AttackFx[] = [];
             hits.forEach(hit => {
-              const shieldPierceBonus = t.critter.ability === "shieldPierce" && hit.enemy.shield > 0 ? 1 + abilityRank * 0.15 : 1;
-              const damage = Math.round(baseDamage * hit.multiplier * shieldPierceBonus);
+              const piercing = t.critter.ability === "piercing";
+              const piercingBonus = piercing && hit.enemy.shield > 0 ? 1 + abilityRank * 0.15 : 1;
+              const critical = rollCritical();
+              const damage = calculateHitDamage(baseDamage, hit.multiplier, critical, piercingBonus);
               const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(hit.enemy.step))];
-              if (t.critter.ability === "shieldPierce") {
+              if (piercing) {
                 hit.enemy.hp -= damage;
               } else {
                 const shieldDamage = Math.min(hit.enemy.shield, damage);
@@ -173,9 +166,10 @@ export default function Home() {
               }
               const fxId = attackId.current++;
               newEffects.push({ id: fxId, from: slotCell, to: targetCell, color: t.critter.color, critterId: t.critter.id });
-              addCombatNumber(targetCell, damage, "damage");
+              addCombatNumber(targetCell, damage, "damage", critical);
               window.setTimeout(() => setAttackFx(fx => fx.filter(item => item.id !== fxId)), 520);
             });
+            if (t.critter.ability === "push") target.step = Math.max(0, target.step - pushBackDistance(t.critter.tier, target.boss));
             setAttackFx(fx => [...fx, ...newEffects]);
           }
         });
@@ -241,9 +235,9 @@ export default function Home() {
     starCharmCount ? { icon: "⭐", name: `Astral Guardian's Grace ×${starCharmCount}`, description: `+${starCharmCount * 25}% guardian damage` } : null,
   ].filter(Boolean) as { icon: string; name: string; description: string }[];
 
-  function addCombatNumber(cell: number, value: number, kind: "damage" | "heal") {
+  function addCombatNumber(cell: number, value: number, kind: "damage" | "heal", critical = false) {
     const id = combatNumberId.current++;
-    setCombatNumbers(current => [...current, { id, cell, value, kind }]);
+    setCombatNumbers(current => [...current, { id, cell, value, kind, critical }]);
     window.setTimeout(() => setCombatNumbers(current => current.filter(number => number.id !== id)), 850);
   }
 
@@ -460,7 +454,7 @@ export default function Home() {
               const from = cellPoint(fx.from); const to = cellPoint(fx.to);
               return <i key={fx.id} className={`attackFx fx-${fx.critterId}`} style={{"--from-x":`${from.x}%`,"--from-y":`${from.y}%`,"--to-x":`${to.x}%`,"--to-y":`${to.y}%`,"--fx-color":fx.color} as React.CSSProperties}><b/></i>;
             })}
-            {combatNumbers.map(number => <b key={number.id} className={`combatNumber ${number.kind}`} style={cellStyle(number.cell)}>{number.kind === "heal" ? "+" : "−"}{number.value}</b>)}
+            {combatNumbers.map(number => <b key={number.id} className={`combatNumber ${number.kind} ${number.critical ? "critical" : ""}`} style={cellStyle(number.cell)}>{number.kind === "heal" ? "+" : "−"}{number.value}{number.critical && <small>CRIT!</small>}</b>)}
           </div>
 
           <aside className="sidePanel">
@@ -523,6 +517,7 @@ export default function Home() {
               <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * (starterId === "mossback" ? 1.15 : 1) * runDamageMultiplier.current)}</b></span>
               <span><small>RANGE</small><b>{inspectedTower.critter.range + (starterId === "moonowl" ? 1 : 0)} tiles</b></span>
               <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - (starterId === "sparkit" ? 1 : 0)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
+              <span><small>CRITICAL CHANCE</small><b>{Math.round(BASE_CRITICAL_CHANCE * 100)}% • ×2 damage</b></span>
             </div>
             <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>
             {inspectedEvolutions.length ? <div className="evolutionButtons">{inspectedEvolutions.map(evolution => <button key={evolution.id} className="upgradeButton" onClick={() => evolveTower(evolution)}>{evolution.evolutionPath === "alternative" ? "Alternative: " : ""}Evolve into {evolution.name} • 💠 {inspectedTower.critter.tier === 1 ? 1 : 2}</button>)}</div> : <button className="upgradeButton" disabled>Final evolution reached</button>}
