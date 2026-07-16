@@ -47,7 +47,7 @@ test("blessing actions atomically apply their run effects", () => {
   assert.equal(spring.dewshards, 1);
   assert.equal(spring.guardianCopies.emberfox, 2);
   assert.equal(spring.guardianForms.emberfox, 2);
-  assert.equal(spring.blessings.spring, 1);
+  assert.deepEqual(spring.blessings, { harvest: 0, warden: 0 });
   assert.match(spring.nextWaveNote, /Emberfox/);
 
   const warden = runReducer(base, { type: "RESOLVE_EVENT", choice: choices.find(choice => choice.id === "make-root-pact"), selectedName: "Emberfox" });

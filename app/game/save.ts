@@ -143,7 +143,6 @@ export function parseRunProgress(raw: string): RestoredRun | null {
       guardianForms,
       blessings: {
         harvest: count(savedBlessings.harvest),
-        spring: count(savedBlessings.spring),
         warden: count(savedBlessings.warden),
       },
       activeEventId,
