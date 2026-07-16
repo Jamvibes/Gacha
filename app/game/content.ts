@@ -1,4 +1,4 @@
-import type { ChapterConfig, Critter, EnemyCodexEntry, StarterStats } from "./types.ts";
+import type { ChapterConfig, Critter, StarterStats } from "./types.ts";
 
 export const BOARD_SIZE = 8;
 export const WAVES_PER_CHAPTER = 10;
@@ -30,22 +30,6 @@ export const CHAPTERS: ChapterConfig[] = [
   { number: 1, region: "Sundew Meadow", title: "Whispers in the Clover", theme: "chapter-one", path: [8,9,10,11,19,27,26,25,24,32,40,41,42,43,44,36,28,20,21,22,23,31,39,47,46,45,53,54,55,63], slots: [2,5,13,17,30,34,38,49,51,60], bossName: "The Thornmaw", bossIcon: "🐲", goalIcon: "🌳", goalName: "HEART TREE" },
   { number: 2, region: "Moonpetal Marsh", title: "Lanterns in the Mist", theme: "chapter-two", path: [0,8,16,17,18,10,11,12,20,28,36,35,34,42,50,51,52,53,45,37,38,39,47,55,63], slots: [2,6,14,22,25,30,41,44,49,60], bossName: "The Mire Monarch", bossIcon: "🐙", goalIcon: "🪷", goalName: "MOON LOTUS" },
   { number: 3, region: "Starlight Canopy", title: "The Crown Above", theme: "chapter-three", path: [56,48,40,41,42,34,26,18,19,20,21,29,37,45,46,47,39,31,23,15,7], slots: [49,58,33,36,43,51,27,30,14,5], bossName: "The Hollow Crown", bossIcon: "👑", goalIcon: "💎", goalName: "STAR CRYSTAL" },
-];
-
-export const ENEMY_SPRITES: Record<string, string> = {
-  Gloomling: "./enemies/gloomling-sprite.png",
-  "Bramble Brute": "./enemies/bramble-brute-sprite.png",
-  "The Thornmaw": "./enemies/thornmaw-sprite.png",
-  "The Mire Monarch": "./enemies/mire-monarch-sprite.png",
-  "The Hollow Crown": "./enemies/hollow-crown-sprite.png",
-};
-
-export const ENEMY_CODEX: EnemyCodexEntry[] = [
-  { name: "Gloomling", title: "Restless Shadow", icon: "👾", chapter: "All chapters", role: "Common foe", defence: "No shield", ability: "Skitter: steady movement with no armour.", color: "#816d9d" },
-  { name: "Bramble Brute", title: "Armoured Thicket", icon: "👹", chapter: "All chapters", role: "Shielded foe", defence: "Barkshield: 35% shield", ability: "Barkshield protects it until guardians break through the extra barrier.", color: "#71824e" },
-  { name: "The Thornmaw", title: "Meadow Devourer", icon: "🐲", chapter: "Chapter 1 · Sundew Meadow", role: "Boss", defence: "Royal Ward: 20% shield", ability: "A colossal creature with exceptional health and a protective ward.", color: "#9a5b69", boss: true },
-  { name: "The Mire Monarch", title: "Sovereign of the Mist", icon: "🐙", chapter: "Chapter 2 · Moonpetal Marsh", role: "Boss", defence: "Royal Ward: 20% shield", ability: "Rules the marsh with colossal health and a protective ward.", color: "#567d83", boss: true },
-  { name: "The Hollow Crown", title: "Starless Usurper", icon: "👑", chapter: "Chapter 3 · Starlight Canopy", role: "Final boss", defence: "Royal Ward: 20% shield", ability: "The final guardian of the Gloom, fortified by colossal health and a protective ward.", color: "#6e588d", boss: true },
 ];
 
 export const STARTER_IDS = CRITTERS.filter(critter => critter.starterEligible).map(critter => critter.id);

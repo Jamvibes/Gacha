@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BOARD_SIZE, CHAPTERS, CRITTERS, ENEMY_CODEX, ENEMY_SPRITES, WAVES_PER_CHAPTER, emptyStarterStats, starterBlessing } from "./game/content";
+import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats, starterBlessing } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
 import { BASE_CRITICAL_CHANCE, calculateHitDamage, pushBackDistance, rollCritical, selectAbilityHits } from "./game/abilities";
 import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
 import { FACTION_BY_ID, FACTIONS } from "./game/factions";
+import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
+import { createWavePlan, groupWavePlan } from "./game/waves";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
 import { useRunState } from "./game/use-run-state";
@@ -55,7 +57,7 @@ export default function Home() {
   const enemyId = useRef(1);
   const attackId = useRef(1);
   const combatNumberId = useRef(1);
-  const spawnQueue = useRef(0);
+  const spawnQueue = useRef<EnemyId[]>([]);
   const spawnTimer = useRef(0);
   const waveHpMultiplier = useRef(1);
   const waveExtraEnemies = useRef(0);
@@ -100,15 +102,11 @@ export default function Home() {
     if (!running || paused) return;
     const timer = window.setInterval(() => {
       spawnTimer.current--;
-      if (spawnQueue.current > 0 && spawnTimer.current <= 0) {
-        const difficultyWave = (chapter - 1) * WAVES_PER_CHAPTER + wave;
-        const boss = wave === WAVES_PER_CHAPTER && spawnQueue.current === 1;
-        const tough = !boss && difficultyWave >= 3 && spawnQueue.current % 4 === 0;
-        const hp = Math.round((boss ? 1200 + chapter * 800 : 58 + difficultyWave * 18 + (tough ? 55 : 0)) * waveHpMultiplier.current);
-        const shield = Math.round(hp * (boss ? 0.2 : tough ? 0.35 : 0) * (starterId === "moonowl" ? 0.75 : 1));
-        setEnemies(es => [...es, { id: enemyId.current++, step: 0, hp, maxHp: hp, shield, maxShield: shield, kind: boss ? activeChapter.bossName : tough ? "Bramble Brute" : "Gloomling", icon: boss ? activeChapter.bossIcon : tough ? "👹" : "👾", boss }]);
-        spawnQueue.current--;
-        spawnTimer.current = 4;
+      const difficultyWave = (chapter - 1) * WAVES_PER_CHAPTER + wave;
+      if (spawnQueue.current.length > 0 && spawnTimer.current <= 0) {
+        const definition = ENEMY_BY_ID[spawnQueue.current.shift()!];
+        setEnemies(es => [...es, createEnemy(definition, enemyId.current++, difficultyWave, chapter, waveHpMultiplier.current, starterId === "moonowl" ? 0.75 : 1)]);
+        spawnTimer.current = definition.ability === "fast" ? 3 : 4;
       }
 
       setTowers(ts => ts.map(t => ({ ...t, cooldown: Math.max(0, t.cooldown - 1) })));
@@ -119,8 +117,9 @@ export default function Home() {
           const currentCell = activePath[Math.min(activePath.length - 1, Math.floor(e.step))];
           if (burnDamage) addCombatNumber(currentCell, burnDamage, "damage");
           const shieldDamage = Math.min(e.shield, burnDamage);
-          return { ...e, shield: e.shield - shieldDamage, hp: e.hp - (burnDamage - shieldDamage), burnTicks: Math.max(0, (e.burnTicks || 0) - 1), step: e.step + 0.14 * ((e.slowTicks || 0) > 0 ? 1 - (e.slowFactor || 0.45) : 1), slowTicks: Math.max(0, (e.slowTicks || 0) - 1) };
+          return { ...e, shield: e.shield - shieldDamage, hp: e.hp - (burnDamage - shieldDamage), burnTicks: Math.max(0, (e.burnTicks || 0) - 1), step: e.step + 0.14 * e.speedMultiplier * ((e.slowTicks || 0) > 0 ? 1 - (e.slowFactor || 0.45) : 1), slowTicks: Math.max(0, (e.slowTicks || 0) - 1) };
         });
+        next.forEach(healer => applyHealerPulse(next, healer).forEach(({ enemy, amount }) => addCombatNumber(activePath[Math.min(activePath.length - 1, Math.floor(enemy.step))], amount, "heal")));
         const escaped = next.filter(e => e.hp > 0 && e.step >= activePath.length - 1);
         if (escaped.length) setLives(v => Math.max(0, v - escaped.length));
         next = next.filter(e => e.hp <= 0 || e.step < activePath.length - 1);
@@ -175,14 +174,15 @@ export default function Home() {
           }
         });
         if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: Math.max(1, t.critter.speed - (starterId === "sparkit" ? 1 : 0)) } : t));
-        return next.filter(e => e.hp > 0);
+        const splitChildren = next.flatMap(parent => createSplitOffspring(parent, () => enemyId.current++, difficultyWave, chapter, waveHpMultiplier.current));
+        return [...next.filter(e => e.hp > 0), ...splitChildren];
       });
     }, 280 / gameSpeed);
     return () => clearInterval(timer);
   }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, gameSpeed]);
 
   useEffect(() => {
-    if (running && spawnQueue.current === 0 && enemies.length === 0) {
+    if (running && spawnQueue.current.length === 0 && enemies.length === 0) {
       const bossCleared = wave === WAVES_PER_CHAPTER;
       const reward = bossCleared ? 100 + chapter * 50 + wavePetalBonus.current + blessings.harvest * 5 : 18 + wave * 3 + chapter * 5 + wavePetalBonus.current + blessings.harvest * 5;
       setRunning(false);
@@ -207,7 +207,7 @@ export default function Home() {
   }, [enemies, running, wave, runUnlocked, chapter, activeChapter, blessings.harvest, starterId, owned, mapSeed, recentEventIds]);
 
   useEffect(() => {
-    if (lives <= 0) { setRunning(false); spawnQueue.current = 0; setMessage("The gloom reached the Heart Tree. Regroup and try again!"); }
+    if (lives <= 0) { setRunning(false); spawnQueue.current = []; setMessage("The gloom reached the Heart Tree. Regroup and try again!"); }
   }, [lives]);
 
   const selectedCritter = CRITTERS.find(c => c.id === selected)!;
@@ -221,16 +221,8 @@ export default function Home() {
   const inspectedEvolutions = inspectedTower ? CRITTERS.filter(c => c.upgradeOf === inspectedTower.critter.id && (c.evolutionPath === "core" || owned.includes(c.id))) : [];
   const statTotals = Object.values(stats).reduce((total, item) => ({ runs: total.runs + item.runs, victories: total.victories + item.victories, bosses: total.bosses + item.bossesDefeated, waves: total.waves + item.wavesCleared }), { runs: 0, victories: 0, bosses: 0, waves: 0 });
   const upcomingWave = Math.min(WAVES_PER_CHAPTER, wave + 1);
-  const upcomingDifficulty = (chapter - 1) * WAVES_PER_CHAPTER + upcomingWave;
-  const upcomingCount = upcomingWave === WAVES_PER_CHAPTER ? 1 : 5 + upcomingWave * 2 + waveExtraEnemies.current;
-  const upcomingBrutes = upcomingWave === WAVES_PER_CHAPTER || upcomingDifficulty < 3 ? 0 : Array.from({ length: upcomingCount }, (_, index) => upcomingCount - index).filter(queue => queue % 4 === 0).length;
-  const upcomingNormalHp = Math.round((58 + upcomingDifficulty * 18) * waveHpMultiplier.current);
-  const upcomingEnemyIntel = upcomingWave === WAVES_PER_CHAPTER
-    ? [{ icon: activeChapter.bossIcon, name: activeChapter.bossName, count: 1, hp: Math.round((1200 + chapter * 800) * waveHpMultiplier.current), shield: Math.round((1200 + chapter * 800) * waveHpMultiplier.current * 0.2 * (starterId === "moonowl" ? 0.75 : 1)), ability: "Royal Ward: colossal health protected by a 20% shield." }]
-    : [
-        { icon: "👾", name: "Gloomling", count: upcomingCount - upcomingBrutes, hp: upcomingNormalHp, shield: 0, ability: "Skitter: steady movement with no armour." },
-        ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), shield: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current * 0.35 * (starterId === "moonowl" ? 0.75 : 1)), ability: "Barkshield: protected by a shield equal to 35% of its health." }] : []),
-      ];
+  const upcomingPlan = createWavePlan({ chapter, wave: upcomingWave, seed: mapSeed, extraEnemies: waveExtraEnemies.current });
+  const upcomingEnemyIntel = groupWavePlan(upcomingPlan, waveHpMultiplier.current, starterId === "moonowl" ? 0.75 : 1).map(group => ({ icon: group.definition.icon, name: group.definition.name, count: group.count, hp: group.hp, shield: group.shield, ability: group.definition.abilityText }));
   const activeBuffs = [
     ...BLESSINGS.map(blessing => blessings[blessing.id] ? { icon: blessing.icon, name: `${blessing.name} ×${blessings[blessing.id]}`, description: blessing.description(blessings[blessing.id]) } : null),
     starCharmCount ? { icon: "⭐", name: `Astral Guardian's Grace ×${starCharmCount}`, description: `+${starCharmCount * 25}% guardian damage` } : null,
@@ -338,7 +330,7 @@ export default function Home() {
       enterRunChapter(chapter + 1);
       setEnemies([]);
       setAttackFx([]);
-      spawnQueue.current = 0;
+      spawnQueue.current = [];
       waveHpMultiplier.current = 1;
       waveExtraEnemies.current = 0;
       wavePetalBonus.current = 0;
@@ -355,7 +347,7 @@ export default function Home() {
     const next = wave + 1;
     saveRunState(wave);
     setWave(next);
-    spawnQueue.current = next === WAVES_PER_CHAPTER ? 1 : 5 + next * 2 + waveExtraEnemies.current;
+    spawnQueue.current = [...createWavePlan({ chapter, wave: next, seed: mapSeed, extraEnemies: waveExtraEnemies.current }).enemyIds];
     spawnTimer.current = 0;
     setRunning(true);
     setMessage(next === WAVES_PER_CHAPTER ? `${activeChapter.bossName} has appeared—the boss battle begins!` : `Wave ${next} is rustling through ${activeChapter.region}…`);
@@ -383,7 +375,7 @@ export default function Home() {
     resetRun();
     setEnemies([]);
     setRunning(false); setPaused(false); setSettingsOpen(false); setAttackFx([]); setCombatNumbers([]); setInspectedTowerSlot(null);
-    spawnQueue.current = 0; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; wavePetalBonus.current = 0; runDamageMultiplier.current = 1;
+    spawnQueue.current = []; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; wavePetalBonus.current = 0; runDamageMultiplier.current = 1;
     setMessage("Choose a starter for your new adventure.");
   }
 
