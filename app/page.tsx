@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats, starterBlessing } from "./game/content";
+import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
 import { BASE_CRITICAL_CHANCE, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
 import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
@@ -11,6 +11,7 @@ import { createWavePlan, groupWavePlan } from "./game/waves";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
 import { useRunState } from "./game/use-run-state";
+import { starterAttackSpeedBonus, starterBlessing, starterDamageMultiplier, starterEnemyShieldMultiplier, starterRangeBonus } from "./game/starter-bonuses";
 import type { EventChoiceDefinition } from "./game/events";
 import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, StarterStats } from "./game/types";
 
@@ -112,7 +113,7 @@ export default function Home() {
       const difficultyWave = (chapter - 1) * WAVES_PER_CHAPTER + wave;
       if (spawnQueue.current.length > 0 && spawnTimer.current <= 0) {
         const definition = ENEMY_BY_ID[spawnQueue.current.shift()!];
-        setEnemies(es => [...es, createEnemy(definition, enemyId.current++, difficultyWave, chapter, waveHpMultiplier.current, starterId === "moonowl" ? 0.75 : 1)]);
+        setEnemies(es => [...es, createEnemy(definition, enemyId.current++, difficultyWave, chapter, waveHpMultiplier.current, starterEnemyShieldMultiplier(starterId))]);
         spawnTimer.current = definition.ability === "fast" ? 3 : 4;
       }
 
@@ -143,13 +144,13 @@ export default function Home() {
             const targetCell = activePath[Math.floor(e.step)];
             const columnGap = targetCell % BOARD_SIZE - slotCell % BOARD_SIZE;
             const rowGap = Math.floor(targetCell / BOARD_SIZE) - Math.floor(slotCell / BOARD_SIZE);
-            const effectiveRange = t.critter.range + (starterId === "bloomwing" ? 1 : 0);
+            const effectiveRange = t.critter.range + starterRangeBonus(starterId);
             return Math.hypot(columnGap, rowGap) <= effectiveRange + 0.65;
           })());
           const sortedTargets = targets.sort((a,b) => b.step - a.step);
           const target = sortedTargets[0];
           if (target) {
-            const starterBoost = starterId === "mossback" ? 1.15 : 1;
+            const starterBoost = starterDamageMultiplier(starterId);
             const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current);
             const abilityRank = t.critter.tier - 1;
             const bondLevel = factionBonds[t.critter.faction].level;
@@ -194,7 +195,7 @@ export default function Home() {
             setAttackFx(fx => [...fx, ...newEffects]);
           }
         });
-        if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: Math.max(1, t.critter.speed - (starterId === "sparkit" ? 1 : 0)) } : t));
+        if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: Math.max(1, t.critter.speed - starterAttackSpeedBonus(starterId)) } : t));
         const splitChildren: Enemy[] = [];
         next.forEach(parent => {
           const children = createSplitOffspring(parent, () => enemyId.current++, difficultyWave, chapter, waveHpMultiplier.current);
@@ -248,7 +249,7 @@ export default function Home() {
   const statTotals = Object.values(stats).reduce((total, item) => ({ runs: total.runs + item.runs, victories: total.victories + item.victories, bosses: total.bosses + item.bossesDefeated, waves: total.waves + item.wavesCleared }), { runs: 0, victories: 0, bosses: 0, waves: 0 });
   const upcomingWave = Math.min(WAVES_PER_CHAPTER, wave + 1);
   const upcomingPlan = createWavePlan({ chapter, wave: upcomingWave, seed: mapSeed, extraEnemies: waveExtraEnemies.current });
-  const upcomingEnemyIntel = groupWavePlan(upcomingPlan, waveHpMultiplier.current, starterId === "moonowl" ? 0.75 : 1).map(group => ({ icon: group.definition.icon, name: group.definition.name, count: group.count, hp: group.hp, shield: group.shield, ability: group.definition.abilityText }));
+  const upcomingEnemyIntel = groupWavePlan(upcomingPlan, waveHpMultiplier.current, starterEnemyShieldMultiplier(starterId)).map(group => ({ icon: group.definition.icon, name: group.definition.name, count: group.count, hp: group.hp, shield: group.shield, ability: group.definition.abilityText }));
   const hoveredEnemy = enemies.find(enemy => enemy.id === hoveredEnemyId) || null;
   const hoveredEnemyDefinition = hoveredEnemy ? ENEMY_BY_ID[hoveredEnemy.definitionId as EnemyId] : null;
   const activeBuffs = [
@@ -474,7 +475,7 @@ export default function Home() {
             <div className="tree" style={cellStyle(activePath[activePath.length - 1])}>{activeChapter.number === 1 ? <LandmarkArt name="Heart Tree" sprite="./landmarks/heart-tree-sprite.png"/> : <span>{activeChapter.goalIcon}</span>}<small>{activeChapter.goalName}</small></div>
             {placeableCells.map(cell => {
               const tower = towers.find(t => t.slot === cell);
-              const effectiveRange = tower ? tower.critter.range + (starterId === "bloomwing" ? 1 : 0) : 0;
+              const effectiveRange = tower ? tower.critter.range + starterRangeBonus(starterId) : 0;
               return <Fragment key={cell}>
                 {tower && hoveredTowerSlot === cell && (
                   <i className="rangeIndicator" aria-hidden="true" style={{...cellStyle(cell), "--range-diameter": `${rangeIndicatorDiameter(effectiveRange, BOARD_SIZE)}%`, "--range-color": tower.critter.color} as React.CSSProperties}/>
@@ -557,9 +558,9 @@ export default function Home() {
             <h1 id="tower-info-title">{inspectedTower.critter.name}</h1>
             <p>{FACTION_BY_ID[inspectedTower.critter.faction].icon} {FACTION_BY_ID[inspectedTower.critter.faction].name} • {inspectedTower.critter.title}</p>
             <div className="towerStatsGrid">
-              <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * (starterId === "mossback" ? 1.15 : 1) * runDamageMultiplier.current)}</b></span>
-              <span><small>RANGE</small><b>{inspectedTower.critter.range + (starterId === "bloomwing" ? 1 : 0)} tiles</b></span>
-              <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - (starterId === "sparkit" ? 1 : 0)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
+              <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * starterDamageMultiplier(starterId) * runDamageMultiplier.current)}</b></span>
+              <span><small>RANGE</small><b>{inspectedTower.critter.range + starterRangeBonus(starterId)} tiles</b></span>
+              <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - starterAttackSpeedBonus(starterId)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
               <span><small>CRITICAL CHANCE</small><b>{Math.round(BASE_CRITICAL_CHANCE * 100)}% • ×2 damage</b></span>
             </div>
             <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>

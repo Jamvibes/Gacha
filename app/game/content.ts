@@ -39,6 +39,4 @@ export function rootCritterId(id: string): string {
   return critter?.upgradeOf ? rootCritterId(critter.upgradeOf) : id;
 }
 
-export const starterBlessing = (id: string) => id === "emberfox" ? "+1 extra Emberfox copy" : id === "bubblefin" ? "+3 Heart Tree health" : id === "mossback" ? "+15% guardian damage" : id === "sparkit" ? "+1 attack speed for all guardians" : id === "bloomwing" ? "+1 range for all guardians" : "Enemy shields are 25% weaker";
-
 export const emptyStarterStats = (): Record<string, StarterStats> => Object.fromEntries(STARTER_IDS.map(id => [id, { runs: 0, victories: 0, bossesDefeated: 0, wavesCleared: 0, highestChapter: 0 }]));
