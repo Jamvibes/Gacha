@@ -25,6 +25,7 @@ export type Critter = {
 
 export type Enemy = {
   id: number;
+  definitionId: string;
   step: number;
   hp: number;
   maxHp: number;
@@ -33,6 +34,10 @@ export type Enemy = {
   kind: string;
   icon: string;
   boss?: boolean;
+  speedMultiplier: number;
+  splitInto?: number;
+  splitTriggered?: boolean;
+  healCooldown?: number;
   burnTicks?: number;
   burnDamage?: number;
   slowTicks?: number;
