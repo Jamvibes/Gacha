@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats, rootCritterId } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
 import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
-import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
+import { EVENT_BY_ID, choicesForEvent, formatEventText, selectPooledEvent, selectScheduledEvent, tierTwoAidReward } from "./game/events";
 import { FACTION_BONDS, FACTION_BY_ID, FACTIONS, getFactionBondStates } from "./game/factions";
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
 import { getEnemyStatuses } from "./game/enemy-statuses";
@@ -57,7 +57,7 @@ export default function Home() {
   const [combatNumbers, setCombatNumbers] = useState<CombatNumber[]>([]);
   const [stats, setStats] = useState<Record<string, StarterStats>>(emptyStarterStats);
   const {
-    state: { dewshards, lives, wave, chapter, mapSeed, mapVersion, towers, selected, starterId, eventOpen, nextWaveNote, runUnlocked, guardianCopies, guardianForms, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, blessings, activeEventId, recentEventIds, starCharmCount },
+    state: { dewshards, lives, wave, chapter, mapSeed, mapVersion, towers, selected, starterId, eventOpen, nextWaveNote, runUnlocked, guardianCopies, guardianForms, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, blessings, activeEventId, recentEventIds, resolvedEventIds, aidMission, queuedEventId, completeAfterEvent, waveDamageMultiplier, starCharmCount },
     setters: { setDewshards, setLives, setWave, setTowers, setSelected, setGameSpeed, setStarCharmCount },
     actions: { restoreRun, startRun, recruitRunGuardian, evolveRunGuardian, grantRosterCopies, resolveRunEvent, finishRunWave, enterRunChapter, completeRun, resetRun },
   } = useRunState();
@@ -76,6 +76,7 @@ export default function Home() {
   const activePath = useMemo(() => generateChapterPath(mapSeed, chapter, mapVersion), [mapSeed, chapter, mapVersion]);
   const placeableCells = useMemo(() => Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, cell) => cell).filter(cell => !activePath.includes(cell)), [activePath]);
   const factionBonds = useMemo(() => getFactionBondStates(towers), [towers]);
+  const unplacedGuardians = useMemo(() => CRITTERS.filter(critter => (guardianForms[critter.id] || 0) > towers.filter(tower => tower.critter.id === critter.id).length), [guardianForms, towers]);
 
   useEffect(() => {
     const progress = readMetaProgress(localStorage);
@@ -106,7 +107,7 @@ export default function Home() {
       return;
     }
     if (!running) saveRunState();
-  }, [saveLoaded, starterId, selected, chapter, mapSeed, mapVersion, wave, lives, dewshards, towers, runUnlocked, guardianCopies, guardianForms, blessings, activeEventId, recentEventIds, starCharmCount, nextWaveNote, eventOpen, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, running]);
+  }, [saveLoaded, starterId, selected, chapter, mapSeed, mapVersion, wave, lives, dewshards, towers, runUnlocked, guardianCopies, guardianForms, blessings, activeEventId, recentEventIds, resolvedEventIds, aidMission, queuedEventId, completeAfterEvent, waveDamageMultiplier, starCharmCount, nextWaveNote, eventOpen, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, running]);
 
   useEffect(() => {
     if (!running || paused) return;
@@ -174,7 +175,7 @@ export default function Home() {
           const target = sortedTargets[0];
           if (target) {
             const starterBoost = starterDamageMultiplier(starterId);
-            const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current);
+            const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current * waveDamageMultiplier);
             const abilityRank = t.critter.tier - 1;
             const bondLevel = factionBonds[t.critter.faction].level;
             const hits = selectAbilityHits(t.critter.ability, t.critter.tier, next, sortedTargets, target, activePath, bondLevel, {
@@ -233,7 +234,7 @@ export default function Home() {
       });
     }, 280 / gameSpeed);
     return () => clearInterval(timer);
-  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, gameSpeed, factionBonds]);
+  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, gameSpeed, factionBonds, waveDamageMultiplier]);
 
   useEffect(() => {
     if (running && spawnQueue.current.length === 0 && enemies.length === 0) {
@@ -246,7 +247,7 @@ export default function Home() {
       wavePetalBonus.current = 0;
       let choices: Critter[] = [];
       let eventId: string | null = null;
-      const eventContext = { chapter, wave, seed: mapSeed, recentEventIds };
+      const eventContext = { chapter, wave, seed: mapSeed, recentEventIds, resolvedEventIds, unplacedGuardianIds: unplacedGuardians.map(critter => critter.id) };
       const scheduledEvent = !bossCleared ? selectScheduledEvent(eventContext) : null;
       if (scheduledEvent) {
         eventId = scheduledEvent.id;
@@ -258,7 +259,7 @@ export default function Home() {
       if (!bossCleared && !eventId && !choices.length) eventId = selectPooledEvent(eventContext)?.id ?? null;
       finishRunWave(bossCleared, choices, eventId);
     }
-  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, blessings.harvest, starterId, owned, mapSeed, recentEventIds]);
+  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, blessings.harvest, starterId, owned, mapSeed, recentEventIds, resolvedEventIds, unplacedGuardians]);
 
   useEffect(() => {
     if (lives <= 0) { setRunning(false); spawnQueue.current = []; setMessage("The gloom reached the Heart Tree. Regroup and try again!"); }
@@ -266,6 +267,7 @@ export default function Home() {
 
   const selectedCritter = CRITTERS.find(c => c.id === selected)!;
   const activeEvent = activeEventId ? EVENT_BY_ID[activeEventId] : null;
+  const activeEventChoices = activeEvent ? choicesForEvent(activeEvent, unplacedGuardians) : [];
   const ownedCritters = useMemo(() => CRITTERS.filter(c => owned.includes(c.id)), [owned]);
   const runCritters = useMemo(() => CRITTERS
     .filter(critter => (guardianForms[critter.id] || 0) > 0)
@@ -319,6 +321,11 @@ export default function Home() {
       blessings,
       activeEventId,
       recentEventIds,
+      resolvedEventIds,
+      aidMission,
+      queuedEventId,
+      completeAfterEvent,
+      waveDamageMultiplier,
       starCharmCount,
       nextWaveNote,
       eventOpen,
@@ -363,7 +370,11 @@ export default function Home() {
   }
 
   function chooseEvent(choice: EventChoiceDefinition) {
-    resolveRunEvent(choice, selectedCritter.name);
+    const sentGuardian = choice.effects.find(effect => effect.type === "sendGuardian");
+    const messenger = CRITTERS.find(critter => critter.id === (sentGuardian?.type === "sendGuardian" ? sentGuardian.guardianId : aidMission?.guardianId));
+    const eventGuardianName = messenger?.name ?? selectedCritter.name;
+    const reward = choice.effects.some(effect => effect.type === "randomTierGuardian") ? tierTwoAidReward(mapSeed, chapter, wave, aidMission?.guardianId) : null;
+    resolveRunEvent(choice, eventGuardianName, reward?.id);
     for (const effect of choice.effects) {
       if (effect.type === "petals") setPetals(petals => Math.max(0, petals + effect.amount));
       if (effect.type === "heal") addCombatNumber(activePath[activePath.length - 1], effect.amount, "heal");
@@ -374,7 +385,7 @@ export default function Home() {
         wavePetalBonus.current = effect.petalBonus;
       }
     }
-    setMessage(formatEventText(choice.resultMessage, selectedCritter.name));
+    setMessage(formatEventText(choice.resultMessage, eventGuardianName, reward?.name));
   }
 
   function chooseBossReward(reward: BossReward) {
@@ -554,7 +565,7 @@ export default function Home() {
             <h1 id="event-title">{activeEvent.title}</h1>
             <p>{activeEvent.description}</p>
             <div className="eventChoices">
-              {activeEvent.choices.map(choice => <button key={choice.id} onClick={() => chooseEvent(choice)}><span>{choice.icon}</span><div><small>{choice.label}</small><b>{choice.title}</b><p>{formatEventText(choice.description, selectedCritter.name)}</p></div></button>)}
+              {activeEventChoices.map(choice => <button key={choice.id} onClick={() => chooseEvent(choice)}><span>{choice.icon}</span><div><small>{choice.label}</small><b>{choice.title}</b><p>{formatEventText(choice.description, selectedCritter.name)}</p></div></button>)}
             </div>
           </section>
         </div>}
@@ -589,7 +600,7 @@ export default function Home() {
             <h1 id="tower-info-title">{inspectedTower.critter.name}</h1>
             <p>{FACTION_BY_ID[inspectedTower.critter.faction].icon} {FACTION_BY_ID[inspectedTower.critter.faction].name} • {inspectedTower.critter.title}</p>
             <div className="towerStatsGrid">
-              <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * starterDamageMultiplier(starterId) * runDamageMultiplier.current)}</b></span>
+              <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * starterDamageMultiplier(starterId) * runDamageMultiplier.current * waveDamageMultiplier)}</b></span>
               <span><small>RANGE</small><b>{inspectedTower.critter.range + starterRangeBonus(starterId)} tiles</b></span>
               <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - starterAttackSpeedBonus(starterId)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
               <span><small>CRITICAL CHANCE</small><b>{Math.round(BASE_CRITICAL_CHANCE * 100)}% • ×{inspectedTower.critter.ability === "piercing" ? starterPiercingCriticalMultiplier(starterId) : CRITICAL_DAMAGE_MULTIPLIER} damage</b></span>

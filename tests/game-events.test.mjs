@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EVENT_BY_ID, EVENTS, eligiblePoolEvents, selectEventForWave, selectPooledEvent, selectScheduledEvent } from "../app/game/events.ts";
+import { EVENT_BY_ID, EVENTS, choicesForEvent, eligiblePoolEvents, selectEventForWave, selectPooledEvent, selectScheduledEvent, tierTwoAidReward } from "../app/game/events.ts";
+import { CRITTERS } from "../app/game/content.ts";
 import { BLESSING_BY_ID } from "../app/game/blessings.ts";
 
-const context = (overrides = {}) => ({ chapter: 1, wave: 4, seed: 123, recentEventIds: [], ...overrides });
+const context = (overrides = {}) => ({ chapter: 1, wave: 4, seed: 123, recentEventIds: [], resolvedEventIds: [], unplacedGuardianIds: [], ...overrides });
 
 test("no ordinary event is currently guaranteed on a particular wave", () => {
   for (let chapter = 1; chapter <= 3; chapter++) {
@@ -47,11 +48,32 @@ test("event and choice identifiers are unique and catalogue references are stabl
   for (const event of EVENTS) {
     assert.equal(EVENT_BY_ID[event.id], event);
     assert.equal(new Set(event.choices.map(choice => choice.id)).size, event.choices.length);
-    assert.ok(event.choices.length >= 2);
+    assert.ok(event.choices.length >= 1);
     for (const choice of event.choices) {
       for (const effect of choice.effects.filter(effect => effect.type === "blessing")) assert.ok(BLESSING_BY_ID[effect.blessingId]);
     }
   }
+});
+
+test("the aid event needs an unplaced guardian and cannot repeat", () => {
+  assert.ok(!eligiblePoolEvents(context()).some(event => event.id === "call-for-aid"));
+  assert.ok(eligiblePoolEvents(context({ unplacedGuardianIds: ["emberfox"] })).some(event => event.id === "call-for-aid"));
+  assert.ok(!eligiblePoolEvents(context({ unplacedGuardianIds: ["emberfox"], resolvedEventIds: ["call-for-aid"] })).some(event => event.id === "call-for-aid"));
+  assert.ok(!eligiblePoolEvents(context({ unplacedGuardianIds: ["emberfox"] })).some(event => event.id === "aid-answered"));
+});
+
+test("the aid event offers one send choice for every unplaced guardian form", () => {
+  const guardians = [CRITTERS.find(critter => critter.id === "emberfox"), CRITTERS.find(critter => critter.id === "cinderpup")];
+  const choices = choicesForEvent(EVENT_BY_ID["call-for-aid"], guardians);
+  assert.deepEqual(choices.map(choice => choice.id), ["send-emberfox", "send-cinderpup", "cannot-spare-anyone"]);
+});
+
+test("the aid reward is deterministic and always a core Tier 2 guardian", () => {
+  const first = tierTwoAidReward(123, 2, 6, "emberfox");
+  const second = tierTwoAidReward(123, 2, 6, "emberfox");
+  assert.equal(first.id, second.id);
+  assert.equal(first.tier, 2);
+  assert.equal(first.evolutionPath, "core");
 });
 
 test("one-off event rewards do not become run Blessings", () => {

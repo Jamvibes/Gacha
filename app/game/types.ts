@@ -51,6 +51,7 @@ export type AttackFx = { id: number; from: number; to: number; color: string; cr
 export type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal"; critical?: boolean };
 export type StarterStats = { runs: number; victories: number; bossesDefeated: number; wavesCleared: number; highestChapter: number };
 export type BlessingCounts = Record<BlessingId, number>;
+export type AidMission = { guardianId: string; wavesRemaining: number };
 export type MetaProgress = { version: 1; owned: string[]; petals: number; stats: Record<string, StarterStats> };
 
 export type ChapterConfig = {
@@ -79,7 +80,7 @@ export type EnemyCodexEntry = {
 };
 
 export type RunSave = {
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   starterId: string;
   selected: string;
   chapter: number;
@@ -98,6 +99,11 @@ export type RunSave = {
   eventBuffs?: BlessingCounts;
   activeEventId?: string | null;
   recentEventIds?: string[];
+  resolvedEventIds?: string[];
+  aidMission?: AidMission | null;
+  queuedEventId?: string | null;
+  completeAfterEvent?: boolean;
+  waveDamageMultiplier?: number;
   starCharmCount: number;
   nextWaveNote: string;
   eventOpen: boolean;
@@ -127,6 +133,11 @@ export type RestoredRun = {
   blessings: BlessingCounts;
   activeEventId: string | null;
   recentEventIds: string[];
+  resolvedEventIds: string[];
+  aidMission: AidMission | null;
+  queuedEventId: string | null;
+  completeAfterEvent: boolean;
+  waveDamageMultiplier: number;
   starCharmCount: number;
   nextWaveNote: string;
   eventOpen: boolean;

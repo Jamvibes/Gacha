@@ -38,6 +38,11 @@ const baseRun = {
   blessings: { harvest: 1, warden: 0 },
   activeEventId: null,
   recentEventIds: [],
+  resolvedEventIds: [],
+  aidMission: null,
+  queuedEventId: null,
+  completeAfterEvent: false,
+  waveDamageMultiplier: 1,
   starCharmCount: 0,
   nextWaveNote: "Moonbloom Covenant",
   eventOpen: false,
@@ -94,7 +99,7 @@ test("current run saves round-trip through the versioned boundary", () => {
   writeRunProgress(storage, baseRun, 123456);
 
   const serialized = JSON.parse(storage.getItem(RUN_SAVE_KEY));
-  assert.equal(serialized.version, 4);
+  assert.equal(serialized.version, 5);
   assert.equal(serialized.savedAt, 123456);
 
   const restored = readRunProgress(storage);
@@ -103,6 +108,24 @@ test("current run saves round-trip through the versioned boundary", () => {
   assert.equal(restored.towers[0].slot, 2);
   assert.equal(restored.blessings.harvest, 1);
   assert.deepEqual(restored.guardianForms, { emberfox: 2 });
+});
+
+test("an aid mission and temporary wave damage survive refreshes", () => {
+  const storage = new MemoryStorage();
+  writeRunProgress(storage, {
+    ...baseRun,
+    guardianCopies: { emberfox: 1 },
+    guardianForms: { emberfox: 1 },
+    aidMission: { guardianId: "cinderpup", wavesRemaining: 1 },
+    resolvedEventIds: ["call-for-aid"],
+    queuedEventId: "aid-answered",
+    waveDamageMultiplier: 1.1,
+  }, 123456);
+  const restored = readRunProgress(storage);
+  assert.deepEqual(restored.aidMission, { guardianId: "cinderpup", wavesRemaining: 1 });
+  assert.deepEqual(restored.resolvedEventIds, ["call-for-aid"]);
+  assert.equal(restored.queuedEventId, "aid-answered");
+  assert.equal(restored.waveDamageMultiplier, 1.1);
 });
 
 test("an open event restores with the same choices instead of rerolling", () => {

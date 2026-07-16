@@ -1,4 +1,5 @@
-import type { BlessingId } from "./types.ts";
+import { CRITTERS } from "./content.ts";
+import type { BlessingId, Critter } from "./types.ts";
 
 export type EventEffect =
   | { type: "petals"; amount: number }
@@ -7,7 +8,13 @@ export type EventEffect =
   | { type: "heal"; amount: number }
   | { type: "blessing"; blessingId: BlessingId; amount: number }
   | { type: "nextWave"; hpMultiplier: number; extraEnemies: number; petalBonus: number; note: string }
-  | { type: "runDamageMultiplier"; multiplier: number };
+  | { type: "runDamageMultiplier"; multiplier: number }
+  | { type: "sendGuardian"; guardianId: string; waves: number }
+  | { type: "temporaryDamage"; multiplier: number; waves: 1 }
+  | { type: "returnAidGuardian" }
+  | { type: "randomTierGuardian"; tier: 2 };
+
+export type EventRequirement = { type: "unplacedGuardianCopy" };
 
 export type EventChoiceDefinition = {
   id: string;
@@ -31,6 +38,9 @@ export type EventDefinition = {
   minWave?: number;
   maxWave?: number;
   scheduled?: { chapter?: number; wave: number }[];
+  repeatable?: boolean;
+  requirements?: EventRequirement[];
+  dynamicChoices?: "sendUnplacedGuardians";
   choices: EventChoiceDefinition[];
 };
 
@@ -39,9 +49,36 @@ export type EventSelectionContext = {
   wave: number;
   seed: number;
   recentEventIds: string[];
+  resolvedEventIds?: string[];
+  unplacedGuardianIds?: string[];
 };
 
 export const EVENTS: EventDefinition[] = [
+  {
+    id: "call-for-aid",
+    icon: "📯",
+    title: "Should we call for aid?",
+    description: "A distant signal could bring reinforcements, but one unplaced guardian must carry the call through the wilds.",
+    weight: 2,
+    repeatable: false,
+    requirements: [{ type: "unplacedGuardianCopy" }],
+    dynamicChoices: "sendUnplacedGuardians",
+    choices: [
+      { id: "cannot-spare-anyone", icon: "🛡️", label: "HOLD THE LINE", title: "We can't spare anyone", description: "Gain 1 Dewshard. All guardians deal 10% more damage during the next wave.", resultMessage: "The guardians close ranks and prepare to strike harder.", effects: [{ type: "dewshards", amount: 1 }, { type: "temporaryDamage", multiplier: 1.1, waves: 1 }] },
+    ],
+  },
+  {
+    id: "aid-answered",
+    icon: "✨",
+    title: "They've answered the call",
+    description: "Your messenger returns with a new ally from deeper in the wilds.",
+    weight: 0,
+    pool: false,
+    repeatable: false,
+    choices: [
+      { id: "welcome-reinforcements", icon: "🌟", label: "REINFORCEMENTS", title: "Welcome the reinforcements", description: "Your sent guardian returns, accompanied by a random Tier 2 guardian.", resultMessage: "{guardian} returns with {reward}, who joins the run.", effects: [{ type: "returnAidGuardian" }, { type: "randomTierGuardian", tier: 2 }] },
+    ],
+  },
   {
     id: "heart-tree-whisper",
     icon: "🌳",
@@ -105,16 +142,18 @@ export const EVENTS: EventDefinition[] = [
 
 export const EVENT_BY_ID = Object.fromEntries(EVENTS.map(event => [event.id, event])) as Record<string, EventDefinition>;
 
-export function formatEventText(text: string, selectedName: string) {
-  return text.replaceAll("{guardian}", selectedName);
+export function formatEventText(text: string, selectedName: string, rewardName = "a Tier 2 guardian") {
+  return text.replaceAll("{guardian}", selectedName).replaceAll("{reward}", rewardName);
 }
 
-export function isEventEligible(event: EventDefinition, chapter: number, wave: number) {
-  return chapter >= (event.minChapter ?? 1) && chapter <= (event.maxChapter ?? Number.POSITIVE_INFINITY) && wave >= (event.minWave ?? 1) && wave <= (event.maxWave ?? Number.POSITIVE_INFINITY);
+export function isEventEligible(event: EventDefinition, context: EventSelectionContext) {
+  if (context.chapter < (event.minChapter ?? 1) || context.chapter > (event.maxChapter ?? Number.POSITIVE_INFINITY) || context.wave < (event.minWave ?? 1) || context.wave > (event.maxWave ?? Number.POSITIVE_INFINITY)) return false;
+  if (event.repeatable === false && context.resolvedEventIds?.includes(event.id)) return false;
+  return !(event.requirements ?? []).some(requirement => requirement.type === "unplacedGuardianCopy" && !context.unplacedGuardianIds?.length);
 }
 
-export function selectScheduledEvent({ chapter, wave }: EventSelectionContext) {
-  return EVENTS.find(event => isEventEligible(event, chapter, wave) && event.scheduled?.some(schedule => schedule.wave === wave && (schedule.chapter === undefined || schedule.chapter === chapter))) ?? null;
+export function selectScheduledEvent(context: EventSelectionContext) {
+  return EVENTS.find(event => isEventEligible(event, context) && event.scheduled?.some(schedule => schedule.wave === context.wave && (schedule.chapter === undefined || schedule.chapter === context.chapter))) ?? null;
 }
 
 function seededRandom({ chapter, wave, seed, recentEventIds }: EventSelectionContext) {
@@ -129,8 +168,29 @@ function seededRandom({ chapter, wave, seed, recentEventIds }: EventSelectionCon
   };
 }
 
-export function eligiblePoolEvents({ chapter, wave }: EventSelectionContext) {
-  return EVENTS.filter(event => event.pool !== false && isEventEligible(event, chapter, wave));
+export function eligiblePoolEvents(context: EventSelectionContext) {
+  return EVENTS.filter(event => event.pool !== false && isEventEligible(event, context));
+}
+
+export function choicesForEvent(event: EventDefinition, unplacedGuardians: Critter[]) {
+  if (event.dynamicChoices !== "sendUnplacedGuardians") return event.choices;
+  const sendChoices: EventChoiceDefinition[] = unplacedGuardians.map(guardian => ({
+    id: `send-${guardian.id}`,
+    icon: guardian.icon,
+    label: "SEND FOR AID",
+    title: `Send ${guardian.name}`,
+    description: `${guardian.name} leaves your available copies for 2 completed waves, then returns with reinforcements.`,
+    resultMessage: `${guardian.name} carries the call into the wilds.`,
+    effects: [{ type: "sendGuardian", guardianId: guardian.id, waves: 2 }],
+  }));
+  return [...sendChoices, ...event.choices];
+}
+
+export function tierTwoAidReward(seed: number, chapter: number, wave: number, guardianId = "") {
+  const candidates = CRITTERS.filter(critter => critter.tier === 2 && critter.evolutionPath === "core");
+  let state = (seed ^ Math.imul(chapter, 0x9e3779b9) ^ Math.imul(wave, 0x85ebca6b)) >>> 0;
+  for (const character of guardianId) state = Math.imul(state ^ character.charCodeAt(0), 16777619) >>> 0;
+  return candidates[state % candidates.length];
 }
 
 export function selectPooledEvent(context: EventSelectionContext, random = seededRandom(context)) {
