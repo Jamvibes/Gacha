@@ -7,6 +7,7 @@ import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnEffect, calculate
 import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
 import { FACTION_BONDS, FACTION_BY_ID, FACTIONS, getFactionBondStates } from "./game/factions";
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
+import { getEnemyStatuses } from "./game/enemy-statuses";
 import { createWavePlan, groupWavePlan } from "./game/waves";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
@@ -15,7 +16,7 @@ import { starterAttackSpeedBonus, starterBlessing, starterChainDamageMultiplier,
 import type { EventChoiceDefinition } from "./game/events";
 import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, StarterStats } from "./game/types";
 
-type EnemyEffect = { id: number; cell: number; kind: "healPulse" | "splitBurst"; color: string };
+type EnemyEffect = { id: number; cell: number; kind: "healPulse" | "splitBurst" | "starterBurn" | "starterPush"; color: string; label?: string };
 
 const cellStyle = (cell: number) => {
   const point = cellPoint(cell);
@@ -136,13 +137,18 @@ export default function Home() {
           if (target) {
             target.burnTicks = Math.max(target.burnTicks || 0, periodicBurn.burnTicks);
             target.burnDamage = Math.max(target.burnDamage || 0, periodicBurn.damage);
+            addEnemyEffect(activePath[Math.min(activePath.length - 1, Math.floor(target.step))], "starterBurn", "#f0783c", "EMBERFOX BLESSING");
           }
         }
         const periodicPush = starterPeriodicPush(starterId);
         if (periodicPush && starterEffectTick.current % periodicPush.intervalTicks === 0) {
           const candidates = next.filter(enemy => enemy.hp > 0);
           const target = candidates[Math.floor(Math.random() * candidates.length)];
-          if (target) target.step = Math.max(0, target.step - periodicPush.distance * (target.boss ? 0.5 : 1));
+          if (target) {
+            const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(target.step))];
+            target.step = Math.max(0, target.step - periodicPush.distance * (target.boss ? 0.5 : 1));
+            addEnemyEffect(targetCell, "starterPush", "#8ed7e8", "BLOOMWING BLESSING");
+          }
         }
         next.forEach(healer => {
           const healed = applyHealerPulse(next, healer);
@@ -287,10 +293,10 @@ export default function Home() {
     window.setTimeout(() => setCombatNumbers(current => current.filter(number => number.id !== id)), 850);
   }
 
-  function addEnemyEffect(cell: number, kind: EnemyEffect["kind"], color: string) {
+  function addEnemyEffect(cell: number, kind: EnemyEffect["kind"], color: string, label?: string) {
     const id = enemyEffectId.current++;
-    setEnemyEffects(current => [...current, { id, cell, kind, color }]);
-    window.setTimeout(() => setEnemyEffects(current => current.filter(effect => effect.id !== id)), 720);
+    setEnemyEffects(current => [...current, { id, cell, kind, color, label }]);
+    window.setTimeout(() => setEnemyEffects(current => current.filter(effect => effect.id !== id)), kind.startsWith("starter") ? 1050 : 720);
   }
 
   function saveRunState(waveOverride = wave) {
@@ -510,11 +516,11 @@ export default function Home() {
             {enemies.map(e => {
               const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))];
               const definition = ENEMY_BY_ID[e.definitionId as EnemyId];
-              const statuses = [e.shield > 0 ? "🛡️" : null, (e.burnTicks || 0) > 0 ? "🔥" : null, (e.slowTicks || 0) > 0 ? "❄️" : null].filter(Boolean);
-              return <div key={e.id} tabIndex={0} role="group" aria-label={`${e.kind}, ${definition.role}, ${Math.max(0, Math.ceil(e.hp))} health${e.shield > 0 ? `, ${Math.ceil(e.shield)} shield` : ""}`} onMouseEnter={() => setHoveredEnemyId(e.id)} onMouseLeave={() => setHoveredEnemyId(current => current === e.id ? null : current)} onFocus={() => setHoveredEnemyId(e.id)} onBlur={() => setHoveredEnemyId(current => current === e.id ? null : current)} className={`enemy role-${definition.ability} ${e.boss ? "boss" : ""} ${(e.burnTicks || 0) > 0 ? "burning" : ""} ${(e.slowTicks || 0) > 0 ? "slowed" : ""}`} style={{...cellStyle(p), "--enemy-color": definition.color} as React.CSSProperties}>{e.boss && <small>BOSS</small>}{statuses.length > 0 && <span className="enemyStatuses">{statuses.map((status, index) => <i key={`${status}-${index}`}>{status}</i>)}</span>}<EnemyArt kind={e.kind} icon={e.icon} animated/>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>;
+              const statuses = getEnemyStatuses(e, definition);
+              return <div key={e.id} tabIndex={0} role="group" aria-label={`${e.kind}, ${definition.role}, ${Math.max(0, Math.ceil(e.hp))} health${statuses.length ? `, ${statuses.map(status => status.label).join(", ")}` : ""}`} onMouseEnter={() => setHoveredEnemyId(e.id)} onMouseLeave={() => setHoveredEnemyId(current => current === e.id ? null : current)} onFocus={() => setHoveredEnemyId(e.id)} onBlur={() => setHoveredEnemyId(current => current === e.id ? null : current)} className={`enemy role-${definition.ability} ${e.boss ? "boss" : ""} ${(e.burnTicks || 0) > 0 ? "burning" : ""} ${(e.slowTicks || 0) > 0 ? "slowed" : ""}`} style={{...cellStyle(p), "--enemy-color": definition.color} as React.CSSProperties}>{e.boss && <small>BOSS</small>}{statuses.length > 0 && <span className="enemyStatuses">{statuses.map(status => <i key={status.id} className={`status-${status.id}`} title={`${status.label}: ${status.detail}`} aria-label={`${status.label}: ${status.detail}`}>{status.icon}</i>)}</span>}<EnemyArt kind={e.kind} icon={e.icon} animated/>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>;
             })}
-            {enemyEffects.map(effect => <i key={effect.id} className={`enemyEffect ${effect.kind}`} style={{...cellStyle(effect.cell), "--enemy-color": effect.color} as React.CSSProperties}><b/><em/></i>)}
-            {hoveredEnemy && hoveredEnemyDefinition && (() => { const cell = activePath[Math.min(activePath.length - 1, Math.floor(hoveredEnemy.step))]; const point = cellPoint(cell); return <aside className={`enemyInfo ${point.y < 28 ? "below" : "above"}`} style={{...cellStyle(cell), "--enemy-color": hoveredEnemyDefinition.color} as React.CSSProperties}><span>{hoveredEnemyDefinition.icon}</span><div><small>{hoveredEnemyDefinition.role}</small><b>{hoveredEnemyDefinition.name}</b><em>{Math.max(0, Math.ceil(hoveredEnemy.hp))}/{hoveredEnemy.maxHp} HP{hoveredEnemy.shield > 0 ? ` • ${Math.ceil(hoveredEnemy.shield)} shield` : ""}</em><p>{hoveredEnemyDefinition.abilityText}</p><i>{hoveredEnemyDefinition.speedMultiplier > 1.2 ? "FAST" : hoveredEnemyDefinition.speedMultiplier < 0.85 ? "SLOW" : "STEADY"}{(hoveredEnemy.burnTicks || 0) > 0 ? " • BURNING" : ""}{(hoveredEnemy.slowTicks || 0) > 0 ? " • SLOWED" : ""}</i></div></aside>; })()}
+            {enemyEffects.map(effect => <i key={effect.id} className={`enemyEffect ${effect.kind}`} style={{...cellStyle(effect.cell), "--enemy-color": effect.color} as React.CSSProperties}><b/><em/>{effect.label && <span>{effect.label}</span>}</i>)}
+            {hoveredEnemy && hoveredEnemyDefinition && (() => { const cell = activePath[Math.min(activePath.length - 1, Math.floor(hoveredEnemy.step))]; const point = cellPoint(cell); const statuses = getEnemyStatuses(hoveredEnemy, hoveredEnemyDefinition); return <aside className={`enemyInfo ${point.y < 28 ? "below" : "above"}`} style={{...cellStyle(cell), "--enemy-color": hoveredEnemyDefinition.color} as React.CSSProperties}><span>{hoveredEnemyDefinition.icon}</span><div><small>{hoveredEnemyDefinition.role}</small><b>{hoveredEnemyDefinition.name}</b><em>{Math.max(0, Math.ceil(hoveredEnemy.hp))}/{hoveredEnemy.maxHp} HP{hoveredEnemy.shield > 0 ? ` • ${Math.ceil(hoveredEnemy.shield)} shield` : ""}</em><p>{hoveredEnemyDefinition.abilityText}</p>{statuses.length > 0 && <ul className="enemyStatusDetails">{statuses.map(status => <li key={status.id}><span>{status.icon}</span><b>{status.label}</b><small>{status.detail}</small></li>)}</ul>}<i>{hoveredEnemyDefinition.speedMultiplier > 1.2 ? "FAST" : hoveredEnemyDefinition.speedMultiplier < 0.85 ? "SLOW" : "STEADY"}</i></div></aside>; })()}
             {attackFx.map(fx => {
               const from = cellPoint(fx.from); const to = cellPoint(fx.to);
               return <i key={fx.id} className={`attackFx fx-${fx.critterId}`} style={{"--from-x":`${from.x}%`,"--from-y":`${from.y}%`,"--to-x":`${to.x}%`,"--to-y":`${to.y}%`,"--fx-color":fx.color} as React.CSSProperties}><b/></i>;
