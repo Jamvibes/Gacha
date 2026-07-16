@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats, starterBlessing } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
-import { BASE_CRITICAL_CHANCE, calculateHitDamage, pushBackDistance, rollCritical, selectAbilityHits } from "./game/abilities";
+import { BASE_CRITICAL_CHANCE, calculateHitDamage, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits } from "./game/abilities";
 import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
 import { FACTION_BY_ID, FACTIONS } from "./game/factions";
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
@@ -47,6 +47,7 @@ export default function Home() {
   const [paused, setPaused] = useState(false);
   const [attackFx, setAttackFx] = useState<AttackFx[]>([]);
   const [inspectedTowerSlot, setInspectedTowerSlot] = useState<number | null>(null);
+  const [hoveredTowerSlot, setHoveredTowerSlot] = useState<number | null>(null);
   const [combatNumbers, setCombatNumbers] = useState<CombatNumber[]>([]);
   const [stats, setStats] = useState<Record<string, StarterStats>>(emptyStarterStats);
   const {
@@ -438,9 +439,15 @@ export default function Home() {
             <div className="tree" style={cellStyle(activePath[activePath.length - 1])}>{activeChapter.number === 1 ? <LandmarkArt name="Heart Tree" sprite="./landmarks/heart-tree-sprite.png"/> : <span>{activeChapter.goalIcon}</span>}<small>{activeChapter.goalName}</small></div>
             {placeableCells.map(cell => {
               const tower = towers.find(t => t.slot === cell);
-              return <button key={cell} aria-label={tower ? `${tower.critter.name}, select for details` : `Place ${selectedCritter.name} here`} className={`towerSlot ${tower ? "filled" : "openTile"}`} onClick={() => placeTower(cell)} style={{...cellStyle(cell), ...(tower ? {"--critter": tower.critter.color} : {})} as React.CSSProperties}>
-                {tower ? <><CritterArt critter={tower.critter} animated attacking={attackFx.some(fx => fx.from === cell && fx.critterId === tower.critter.id)}/><small>{tower.critter.name} • T{tower.critter.tier}</small></> : <><span>✦</span><small>PLACE</small></>}
-              </button>;
+              const effectiveRange = tower ? tower.critter.range + (starterId === "bloomwing" ? 1 : 0) : 0;
+              return <Fragment key={cell}>
+                {tower && hoveredTowerSlot === cell && (
+                  <i className="rangeIndicator" aria-hidden="true" style={{...cellStyle(cell), "--range-diameter": `${rangeIndicatorDiameter(effectiveRange, BOARD_SIZE)}%`, "--range-color": tower.critter.color} as React.CSSProperties}/>
+                )}
+                <button aria-label={tower ? `${tower.critter.name}, range ${effectiveRange} tiles, select for details` : `Place ${selectedCritter.name} here`} className={`towerSlot ${tower ? "filled" : "openTile"}`} onClick={() => placeTower(cell)} onMouseEnter={() => tower && setHoveredTowerSlot(cell)} onMouseLeave={() => setHoveredTowerSlot(current => current === cell ? null : current)} onFocus={() => tower && setHoveredTowerSlot(cell)} onBlur={() => setHoveredTowerSlot(current => current === cell ? null : current)} style={{...cellStyle(cell), ...(tower ? {"--critter": tower.critter.color} : {})} as React.CSSProperties}>
+                  {tower ? <><CritterArt critter={tower.critter} animated attacking={attackFx.some(fx => fx.from === cell && fx.critterId === tower.critter.id)}/><small>{tower.critter.name} • T{tower.critter.tier}</small></> : <><span>✦</span><small>PLACE</small></>}
+                </button>
+              </Fragment>;
             })}
             {enemies.map(e => { const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy ${e.boss ? "boss" : ""}`} style={cellStyle(p)}>{e.boss && <small>BOSS</small>}<EnemyArt kind={e.kind} icon={e.icon} animated/>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
             {attackFx.map(fx => {
