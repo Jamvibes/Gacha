@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats } from "./game/content";
+import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats, rootCritterId } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
 import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
 import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
@@ -57,9 +57,9 @@ export default function Home() {
   const [combatNumbers, setCombatNumbers] = useState<CombatNumber[]>([]);
   const [stats, setStats] = useState<Record<string, StarterStats>>(emptyStarterStats);
   const {
-    state: { dewshards, lives, wave, chapter, mapSeed, mapVersion, towers, selected, starterId, eventOpen, nextWaveNote, runUnlocked, guardianCopies, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, blessings, activeEventId, recentEventIds, starCharmCount },
-    setters: { setDewshards, setLives, setWave, setTowers, setSelected, setGuardianCopies, setGameSpeed, setStarCharmCount },
-    actions: { restoreRun, startRun, recruitRunGuardian, resolveRunEvent, finishRunWave, enterRunChapter, completeRun, resetRun },
+    state: { dewshards, lives, wave, chapter, mapSeed, mapVersion, towers, selected, starterId, eventOpen, nextWaveNote, runUnlocked, guardianCopies, guardianForms, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, blessings, activeEventId, recentEventIds, starCharmCount },
+    setters: { setDewshards, setLives, setWave, setTowers, setSelected, setGameSpeed, setStarCharmCount },
+    actions: { restoreRun, startRun, recruitRunGuardian, evolveRunGuardian, grantRosterCopies, resolveRunEvent, finishRunWave, enterRunChapter, completeRun, resetRun },
   } = useRunState();
   const enemyId = useRef(1);
   const attackId = useRef(1);
@@ -106,7 +106,7 @@ export default function Home() {
       return;
     }
     if (!running) saveRunState();
-  }, [saveLoaded, starterId, selected, chapter, mapSeed, mapVersion, wave, lives, dewshards, towers, runUnlocked, guardianCopies, blessings, activeEventId, recentEventIds, starCharmCount, nextWaveNote, eventOpen, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, running]);
+  }, [saveLoaded, starterId, selected, chapter, mapSeed, mapVersion, wave, lives, dewshards, towers, runUnlocked, guardianCopies, guardianForms, blessings, activeEventId, recentEventIds, starCharmCount, nextWaveNote, eventOpen, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, running]);
 
   useEffect(() => {
     if (!running || paused) return;
@@ -267,8 +267,10 @@ export default function Home() {
   const selectedCritter = CRITTERS.find(c => c.id === selected)!;
   const activeEvent = activeEventId ? EVENT_BY_ID[activeEventId] : null;
   const ownedCritters = useMemo(() => CRITTERS.filter(c => owned.includes(c.id)), [owned]);
-  const runCritters = useMemo(() => CRITTERS.filter(c => runUnlocked.includes(c.id)), [runUnlocked]);
-  const remainingCopies = (id: string) => Math.max(0, (guardianCopies[id] || 0) - towers.filter(tower => tower.sourceId === id).length);
+  const runCritters = useMemo(() => CRITTERS
+    .filter(critter => (guardianForms[critter.id] || 0) > 0)
+    .sort((first, second) => runUnlocked.indexOf(rootCritterId(first.id)) - runUnlocked.indexOf(rootCritterId(second.id)) || first.tier - second.tier), [runUnlocked, guardianForms]);
+  const remainingCopies = (id: string) => Math.max(0, (guardianForms[id] || 0) - towers.filter(tower => tower.critter.id === id).length);
   const starterCritter = CRITTERS.find(c => c.id === starterId);
   const starterChoices = CRITTERS.filter(c => c.starterEligible && (!c.wishOnly || owned.includes(c.id)));
   const inspectedTower = inspectedTowerSlot === null ? null : towers.find(t => t.slot === inspectedTowerSlot) || null;
@@ -313,6 +315,7 @@ export default function Home() {
       towers: towers.map(tower => ({ slot: tower.slot, critterId: tower.critter.id, sourceId: tower.sourceId })),
       runUnlocked,
       guardianCopies,
+      guardianForms,
       blessings,
       activeEventId,
       recentEventIds,
@@ -380,7 +383,7 @@ export default function Home() {
       addCombatNumber(activePath[activePath.length - 1], 5, "heal");
       setMessage("The Ancient Heartseed strengthens your objective with 5 health.");
     } else if (reward === "embercore") {
-      setGuardianCopies(current => Object.fromEntries(runUnlocked.map(id => [id, (current[id] || 0) + 1])));
+      grantRosterCopies();
       setMessage("The Twinflame Totem grants one additional copy of every guardian in your roster.");
     } else {
       runDamageMultiplier.current *= 1.25;
@@ -423,7 +426,7 @@ export default function Home() {
     if (towers.some(t => t.slot === slot)) { setInspectedTowerSlot(slot); setPaused(true); return; }
     if (activePath.includes(slot)) { setMessage("Guardians cannot be placed on the enemy path."); return; }
     if (remainingCopies(selected) <= 0) { setMessage(`All available ${selectedCritter.name} copies are already placed. Find another during an event.`); return; }
-    setTowers(ts => [...ts, { slot, critter: selectedCritter, cooldown: 0, sourceId: selected }]); setMessage(`${selectedCritter.name} is ready to defend! Placement costs nothing.`);
+    setTowers(ts => [...ts, { slot, critter: selectedCritter, cooldown: 0, sourceId: rootCritterId(selected) }]); setMessage(`${selectedCritter.name} (Tier ${selectedCritter.tier}) is ready to defend! Placement costs nothing.`);
   }
 
   function evolveTower(evolution: Critter) {
@@ -431,7 +434,7 @@ export default function Home() {
     const cost = inspectedTower.critter.tier === 1 ? 1 : 2;
     if (dewshards < cost) { setMessage(`${inspectedTower.critter.name} needs ${cost} Dewshard${cost === 1 ? "" : "s"} to evolve into ${evolution.name}.`); return; }
     setDewshards(shards => shards - cost);
-    setTowers(current => current.map(tower => tower.slot === inspectedTower.slot ? { ...tower, critter: evolution, cooldown: 0 } : tower));
+    evolveRunGuardian(inspectedTower.slot, evolution);
     setOwned(current => current.includes(evolution.id) ? current : [...current, evolution.id]);
     setMessage(`${inspectedTower.critter.name} evolved into ${evolution.name}!`);
   }
@@ -508,7 +511,7 @@ export default function Home() {
                 {tower && hoveredTowerSlot === cell && (
                   <i className="rangeIndicator" aria-hidden="true" style={{...cellStyle(cell), "--range-diameter": `${rangeIndicatorDiameter(effectiveRange, BOARD_SIZE)}%`, "--range-color": tower.critter.color} as React.CSSProperties}/>
                 )}
-                <button aria-label={tower ? `${tower.critter.name}, range ${effectiveRange} tiles, select for details` : `Place ${selectedCritter.name} here`} className={`towerSlot ${tower ? "filled" : "openTile"}`} onClick={() => placeTower(cell)} onMouseEnter={() => tower && setHoveredTowerSlot(cell)} onMouseLeave={() => setHoveredTowerSlot(current => current === cell ? null : current)} onFocus={() => tower && setHoveredTowerSlot(cell)} onBlur={() => setHoveredTowerSlot(current => current === cell ? null : current)} style={{...cellStyle(cell), ...(tower ? {"--critter": tower.critter.color} : {})} as React.CSSProperties}>
+                <button aria-label={tower ? `${tower.critter.name}, Tier ${tower.critter.tier}, range ${effectiveRange} tiles, select for details` : `Place ${selectedCritter.name}, Tier ${selectedCritter.tier}, here`} className={`towerSlot ${tower ? "filled" : "openTile"}`} onClick={() => placeTower(cell)} onMouseEnter={() => tower && setHoveredTowerSlot(cell)} onMouseLeave={() => setHoveredTowerSlot(current => current === cell ? null : current)} onFocus={() => tower && setHoveredTowerSlot(cell)} onBlur={() => setHoveredTowerSlot(current => current === cell ? null : current)} style={{...cellStyle(cell), ...(tower ? {"--critter": tower.critter.color} : {})} as React.CSSProperties}>
                   {tower ? <><CritterArt critter={tower.critter} animated attacking={attackFx.some(fx => fx.from === cell && fx.critterId === tower.critter.id)}/><small>{tower.critter.name} • T{tower.critter.tier}</small></> : <><span>✦</span><small>PLACE</small></>}
                 </button>
               </Fragment>;
@@ -532,11 +535,11 @@ export default function Home() {
             <div className="guide"><span>🐭</span><p>{message}</p></div>
             <div className="rosterTitle"><b>Your guardians</b><small>Select one to place</small></div>
             <div className="roster">
-              {runCritters.map(c => <button key={c.id} className={`${selected === c.id ? "selected" : ""} ${remainingCopies(c.id) === 0 ? "depleted" : ""}`} onClick={() => setSelected(c.id)}>
-                <span className="portrait" style={{background: c.color}}><CritterArt critter={c}/></span><span><b>{c.name}</b><small>{c.title}</small></span><em>×{remainingCopies(c.id)} ready</em>
-              </button>)}
+              {runCritters.map(c => { const family = CRITTERS.find(option => option.id === rootCritterId(c.id))!; return <button key={c.id} aria-label={`Select ${c.name}, Tier ${c.tier}, ${remainingCopies(c.id)} ready`} className={`${selected === c.id ? "selected" : ""} ${remainingCopies(c.id) === 0 ? "depleted" : ""}`} onClick={() => setSelected(c.id)}>
+                <span className="portrait" style={{background: c.color}}><CritterArt critter={c}/></span><span><b>{c.name}<i className={`formTier tier-${c.tier}`}>T{c.tier}</i></b><small>{c.id === family.id ? "Base form" : `${family.name} family`} • {c.title}</small></span><em>×{remainingCopies(c.id)} ready</em>
+              </button>; })}
             </div>
-            <div className="selectedInfo"><span style={{background:selectedCritter.color}}><CritterArt critter={selectedCritter}/></span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range} • {remainingCopies(selected)} available</small></div></div>
+            <div className="selectedInfo"><span style={{background:selectedCritter.color}}><CritterArt critter={selectedCritter}/></span><div><b>Tier {selectedCritter.tier} • {selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range} • {remainingCopies(selected)} available</small></div></div>
             <div className="factionBondPanel"><div className="buffTitle"><b>Faction Bonds</b><small>Placed copies activate bonds</small></div>{placedFactionBonds.length ? <div className="factionBondList">{placedFactionBonds.map(({faction,count,level,effects}) => <span key={faction.id} className={level ? `active level-${level}` : ""}><i>{faction.icon}</i><b>{faction.name}<em>{count}/3</em></b><small>{level === 2 ? effects.levelTwo : level === 1 ? effects.levelOne : `Place ${2 - count} more ${faction.name} guardian to activate Bond I.`}</small></span>)}</div> : <p>Place 2 guardians from one faction to activate its first bond.</p>}</div>
             <div className="buffPanel"><div className="buffTitle"><b>Run Blessings</b><small>Last until this run ends</small></div>{activeBuffs.length ? <div className="buffList">{activeBuffs.map(blessing => <span key={blessing.name}><i>{blessing.icon}</i><b>{blessing.name}</b><small>{blessing.description}</small></span>)}</div> : <p>No Blessings yet. Event decisions and relics can grant them.</p>}</div>
             {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><EnemyArt kind={enemy.name} icon={enemy.icon}/><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP{enemy.shield ? ` • ${enemy.shield} shield` : ""} each</small><p>{enemy.ability}</p></div></article>)}</div>}
