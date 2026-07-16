@@ -34,6 +34,7 @@ const baseRun = {
   towers: [{ slot: 2, critterId: "emberfox", sourceId: "emberfox" }],
   runUnlocked: ["emberfox"],
   guardianCopies: { emberfox: 2 },
+  guardianForms: { emberfox: 2 },
   blessings: { harvest: 1, spring: 0, warden: 0 },
   activeEventId: null,
   recentEventIds: [],
@@ -76,7 +77,7 @@ test("malformed permanent progression falls back without deleting defaults", () 
 
 test("version one run saves migrate legacy tower slots", () => {
   const storage = new MemoryStorage();
-  storage.setItem(RUN_SAVE_KEY, JSON.stringify({ ...baseRun, version: 1, mapVersion: undefined, blessings: undefined, eventBuffs: { harvest: 1, spring: 0, warden: 0 }, towers: [{ slot: 0, critterId: "emberfox" }], savedAt: 1 }));
+  storage.setItem(RUN_SAVE_KEY, JSON.stringify({ ...baseRun, version: 1, mapVersion: undefined, guardianForms: undefined, blessings: undefined, eventBuffs: { harvest: 1, spring: 0, warden: 0 }, towers: [{ slot: 0, critterId: "emberfox" }], savedAt: 1 }));
 
   const restored = readRunProgress(storage);
   assert.ok(restored);
@@ -84,6 +85,7 @@ test("version one run saves migrate legacy tower slots", () => {
   assert.equal(restored.towers[0].slot, CHAPTERS[0].slots[0]);
   assert.equal(restored.towers[0].sourceId, "emberfox");
   assert.equal(restored.guardianCopies.emberfox, 2);
+  assert.deepEqual(restored.guardianForms, { emberfox: 2 });
 });
 
 test("current run saves round-trip through the versioned boundary", () => {
@@ -91,7 +93,7 @@ test("current run saves round-trip through the versioned boundary", () => {
   writeRunProgress(storage, baseRun, 123456);
 
   const serialized = JSON.parse(storage.getItem(RUN_SAVE_KEY));
-  assert.equal(serialized.version, 3);
+  assert.equal(serialized.version, 4);
   assert.equal(serialized.savedAt, 123456);
 
   const restored = readRunProgress(storage);
@@ -99,6 +101,7 @@ test("current run saves round-trip through the versioned boundary", () => {
   assert.equal(restored.chapter, 1);
   assert.equal(restored.towers[0].slot, 2);
   assert.equal(restored.blessings.harvest, 1);
+  assert.deepEqual(restored.guardianForms, { emberfox: 2 });
 });
 
 test("an open event restores with the same choices instead of rerolling", () => {
@@ -113,7 +116,7 @@ test("an open event restores with the same choices instead of rerolling", () => 
 
 test("older open-event saves receive one deterministic migrated event", () => {
   const storage = new MemoryStorage();
-  storage.setItem(RUN_SAVE_KEY, JSON.stringify({ ...baseRun, version: 2, blessings: undefined, eventBuffs: baseRun.blessings, eventOpen: true, activeEventId: undefined, recentEventIds: undefined, savedAt: 1 }));
+  storage.setItem(RUN_SAVE_KEY, JSON.stringify({ ...baseRun, version: 2, guardianForms: undefined, blessings: undefined, eventBuffs: baseRun.blessings, eventOpen: true, activeEventId: undefined, recentEventIds: undefined, savedAt: 1 }));
   const first = readRunProgress(storage);
   const second = readRunProgress(storage);
   assert.ok(first.activeEventId);
@@ -131,4 +134,19 @@ test("malformed tower entries cannot appear on an unintended tile", () => {
   const storage = new MemoryStorage();
   storage.setItem(RUN_SAVE_KEY, JSON.stringify({ ...baseRun, version: 2, towers: [{ critterId: "emberfox" }], savedAt: 1 }));
   assert.deepEqual(readRunProgress(storage).towers, []);
+});
+
+test("version three saves infer evolved forms from placed guardians", () => {
+  const storage = new MemoryStorage();
+  storage.setItem(RUN_SAVE_KEY, JSON.stringify({
+    ...baseRun,
+    version: 3,
+    selected: "cinderpup",
+    guardianForms: undefined,
+    towers: [{ slot: 2, critterId: "cinderpup", sourceId: "emberfox" }],
+    savedAt: 1,
+  }));
+  const restored = readRunProgress(storage);
+  assert.deepEqual(restored.guardianForms, { cinderpup: 1, emberfox: 1 });
+  assert.equal(restored.selected, "cinderpup");
 });

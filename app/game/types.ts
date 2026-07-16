@@ -79,7 +79,7 @@ export type EnemyCodexEntry = {
 };
 
 export type RunSave = {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   starterId: string;
   selected: string;
   chapter: number;
@@ -91,6 +91,7 @@ export type RunSave = {
   towers: { slot: number; critterId: string; sourceId?: string }[];
   runUnlocked: string[];
   guardianCopies?: Record<string, number>;
+  guardianForms?: Record<string, number>;
   mapSeed?: number;
   mapVersion?: 1 | 2;
   blessings?: BlessingCounts;
@@ -122,6 +123,7 @@ export type RestoredRun = {
   towers: Tower[];
   runUnlocked: string[];
   guardianCopies: Record<string, number>;
+  guardianForms: Record<string, number>;
   blessings: BlessingCounts;
   activeEventId: string | null;
   recentEventIds: string[];

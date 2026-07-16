@@ -5,10 +5,11 @@ import { generateChapterPath } from "./map.ts";
 import type { BlessingCounts, MetaProgress, RestoredRun, RunSave, StarterStats, Tower } from "./types.ts";
 
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-export type RunSaveInput = Omit<RunSave, "version" | "savedAt" | "eventBuffs" | "blessings" | "activeEventId" | "recentEventIds"> & {
+export type RunSaveInput = Omit<RunSave, "version" | "savedAt" | "eventBuffs" | "blessings" | "activeEventId" | "recentEventIds" | "guardianForms"> & {
   blessings: BlessingCounts;
   activeEventId: string | null;
   recentEventIds: string[];
+  guardianForms: Record<string, number>;
 };
 
 const nonNegativeNumber = (value: unknown, fallback = 0) => {
@@ -69,7 +70,7 @@ export function writeMetaProgress(storage: StorageLike, progress: Omit<MetaProgr
 export function parseRunProgress(raw: string): RestoredRun | null {
   try {
     const data = JSON.parse(raw) as Partial<RunSave>;
-    if (data.version !== 1 && data.version !== 2 && data.version !== 3) return null;
+    if (data.version !== 1 && data.version !== 2 && data.version !== 3 && data.version !== 4) return null;
     const starter = CRITTERS.find(critter => critter.id === data.starterId && critter.starterEligible);
     if (!starter) return null;
 
@@ -78,8 +79,9 @@ export function parseRunProgress(raw: string): RestoredRun | null {
     const mapVersion: 1 | 2 = data.mapVersion === 2 ? 2 : 1;
     const bossRewardOpen = Boolean(data.bossRewardOpen);
     const wave = Math.min(bossRewardOpen ? WAVES_PER_CHAPTER : WAVES_PER_CHAPTER - 1, count(data.wave));
-    const runUnlocked = Array.from(new Set([starter.id, ...(Array.isArray(data.runUnlocked) ? data.runUnlocked : [])]))
-      .filter((id): id is string => typeof id === "string" && CRITTERS.some(critter => critter.id === id));
+    const runUnlocked = Array.from(new Set([starter.id, ...(Array.isArray(data.runUnlocked) ? data.runUnlocked : [])]
+      .filter((id): id is string => typeof id === "string" && CRITTERS.some(critter => critter.id === id))
+      .map(rootCritterId)));
     const path = generateChapterPath(mapSeed, chapter, mapVersion);
     const savedTowers = Array.isArray(data.towers) ? data.towers : [];
     const towers = savedTowers.map(tower => {
@@ -97,6 +99,29 @@ export function parseRunProgress(raw: string): RestoredRun | null {
       copies[id] = Math.max(1, count(savedCopies[id]), placed);
       return copies;
     }, {});
+    const savedForms = data.guardianForms && typeof data.guardianForms === "object" ? data.guardianForms : {};
+    const guardianForms = CRITTERS.reduce<Record<string, number>>((forms, critter) => {
+      if (runUnlocked.includes(rootCritterId(critter.id))) {
+        const savedCount = count(savedForms[critter.id]);
+        if (savedCount > 0) forms[critter.id] = savedCount;
+      }
+      return forms;
+    }, {});
+    for (const tower of towers) {
+      const placedAsForm = towers.filter(option => option.critter.id === tower.critter.id).length;
+      guardianForms[tower.critter.id] = Math.max(guardianForms[tower.critter.id] || 0, placedAsForm);
+    }
+    for (const familyId of runUnlocked) {
+      const formTotal = CRITTERS
+        .filter(critter => rootCritterId(critter.id) === familyId)
+        .reduce((total, critter) => total + (guardianForms[critter.id] || 0), 0);
+      const familyTotal = Math.max(guardianCopies[familyId], formTotal, 1);
+      if (formTotal < familyTotal) guardianForms[familyId] = (guardianForms[familyId] || 0) + familyTotal - formTotal;
+      guardianCopies[familyId] = familyTotal;
+    }
+    const selectedForm = typeof data.selected === "string" && (guardianForms[data.selected] || 0) > 0
+      ? data.selected
+      : CRITTERS.find(critter => (guardianForms[critter.id] || 0) > 0)?.id ?? starter.id;
     const savedBlessings = data.blessings ?? data.eventBuffs ?? emptyBlessings();
     const recentEventIds = Array.from(new Set((Array.isArray(data.recentEventIds) ? data.recentEventIds : []).filter((id): id is string => typeof id === "string" && Boolean(EVENT_BY_ID[id])))).slice(-3);
     const savedActiveEventId = typeof data.activeEventId === "string" && EVENT_BY_ID[data.activeEventId] ? data.activeEventId : null;
@@ -105,7 +130,7 @@ export function parseRunProgress(raw: string): RestoredRun | null {
 
     return {
       starterId: starter.id,
-      selected: typeof data.selected === "string" && runUnlocked.includes(data.selected) ? data.selected : starter.id,
+      selected: selectedForm,
       chapter,
       wave,
       mapSeed,
@@ -115,6 +140,7 @@ export function parseRunProgress(raw: string): RestoredRun | null {
       towers,
       runUnlocked,
       guardianCopies,
+      guardianForms,
       blessings: {
         harvest: count(savedBlessings.harvest),
         spring: count(savedBlessings.spring),
@@ -147,7 +173,7 @@ export function readRunProgress(storage: StorageLike): RestoredRun | null {
 }
 
 export function writeRunProgress(storage: StorageLike, input: RunSaveInput, savedAt = Date.now()) {
-  const save: RunSave = { ...input, version: 3, savedAt };
+  const save: RunSave = { ...input, version: 4, savedAt };
   storage.setItem(RUN_SAVE_KEY, JSON.stringify(save));
 }
 
