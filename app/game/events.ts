@@ -48,8 +48,6 @@ export const EVENTS: EventDefinition[] = [
     title: "A whisper beneath the Heart Tree",
     description: "At this familiar turning point, the ancient roots offer strength—but every promise shapes the next battle.",
     weight: 1,
-    pool: false,
-    scheduled: [{ wave: 2 }],
     choices: [
       { id: "accept-rootward", icon: "🌿", label: "STEADY • 💠 1", title: "Accept the rootward", description: "Heal 2 objective health, gain 1 Dewshard, and receive the Oath of the Deep Roots. The next wave has 2 extra enemies.", resultMessage: "The Heart Tree answers with patient strength.", effects: [{ type: "heal", amount: 2 }, { type: "dewshards", amount: 1 }, { type: "blessing", blessingId: "warden", amount: 1 }, { type: "runDamageMultiplier", multiplier: 1.05 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 2, petalBonus: 15, note: "Rootward promise: +2 health • 2 extra enemies • +15 clear reward" }] },
       { id: "gather-heart-sap", icon: "💠", label: "BOLD • 💠 2", title: "Gather shimmering heart-sap", description: "Gain 2 Dewshards and 25 petals. The next wave has 20% more health.", resultMessage: "The heart-sap hardens into two bright Dewshards.", effects: [{ type: "dewshards", amount: 2 }, { type: "petals", amount: 25 }, { type: "nextWave", hpMultiplier: 1.2, extraEnemies: 0, petalBonus: 10, note: "Heart-sap trial: enemies have 20% more health • +10 clear reward" }] },
