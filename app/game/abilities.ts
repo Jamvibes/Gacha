@@ -4,6 +4,10 @@ import type { AbilityId, Enemy } from "./types.ts";
 export const BASE_CRITICAL_CHANCE = 0.1;
 export const CRITICAL_DAMAGE_MULTIPLIER = 2;
 
+export function rangeIndicatorDiameter(range: number, boardSize: number) {
+  return ((range + 0.65) * 2 / boardSize) * 100;
+}
+
 export type AbilityHit = { enemy: Enemy; multiplier: number };
 
 const cellDistance = (first: number, second: number) => {

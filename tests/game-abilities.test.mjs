@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, calculateHitDamage, pushBackDistance, rollCritical, selectAbilityHits } from "../app/game/abilities.ts";
+import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, calculateHitDamage, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits } from "../app/game/abilities.ts";
 import { CRITTERS } from "../app/game/content.ts";
 import { FACTION_BY_ID, FACTIONS } from "../app/game/factions.ts";
 
@@ -49,4 +49,9 @@ test("critical hits use the shared chance and damage multiplier", () => {
 test("push grows with tier and bosses resist half of it", () => {
   assert.ok(pushBackDistance(3) > pushBackDistance(1));
   assert.equal(pushBackDistance(2, true), pushBackDistance(2) * 0.5);
+});
+
+test("range indicators use the same targeting allowance as combat", () => {
+  assert.equal(rangeIndicatorDiameter(2, 8), 66.25);
+  assert.ok(rangeIndicatorDiameter(4, 8) > rangeIndicatorDiameter(2, 8));
 });
