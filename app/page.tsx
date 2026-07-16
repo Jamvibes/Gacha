@@ -14,6 +14,8 @@ import { useRunState } from "./game/use-run-state";
 import type { EventChoiceDefinition } from "./game/events";
 import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, StarterStats } from "./game/types";
 
+type EnemyEffect = { id: number; cell: number; kind: "healPulse" | "splitBurst"; color: string };
+
 const cellStyle = (cell: number) => {
   const point = cellPoint(cell);
   return { left: `${point.x}%`, top: `${point.y}%` } as React.CSSProperties;
@@ -48,6 +50,8 @@ export default function Home() {
   const [attackFx, setAttackFx] = useState<AttackFx[]>([]);
   const [inspectedTowerSlot, setInspectedTowerSlot] = useState<number | null>(null);
   const [hoveredTowerSlot, setHoveredTowerSlot] = useState<number | null>(null);
+  const [hoveredEnemyId, setHoveredEnemyId] = useState<number | null>(null);
+  const [enemyEffects, setEnemyEffects] = useState<EnemyEffect[]>([]);
   const [combatNumbers, setCombatNumbers] = useState<CombatNumber[]>([]);
   const [stats, setStats] = useState<Record<string, StarterStats>>(emptyStarterStats);
   const {
@@ -58,6 +62,7 @@ export default function Home() {
   const enemyId = useRef(1);
   const attackId = useRef(1);
   const combatNumberId = useRef(1);
+  const enemyEffectId = useRef(1);
   const spawnQueue = useRef<EnemyId[]>([]);
   const spawnTimer = useRef(0);
   const waveHpMultiplier = useRef(1);
@@ -120,7 +125,11 @@ export default function Home() {
           const shieldDamage = Math.min(e.shield, burnDamage);
           return { ...e, shield: e.shield - shieldDamage, hp: e.hp - (burnDamage - shieldDamage), burnTicks: Math.max(0, (e.burnTicks || 0) - 1), step: e.step + 0.14 * e.speedMultiplier * ((e.slowTicks || 0) > 0 ? 1 - (e.slowFactor || 0.45) : 1), slowTicks: Math.max(0, (e.slowTicks || 0) - 1) };
         });
-        next.forEach(healer => applyHealerPulse(next, healer).forEach(({ enemy, amount }) => addCombatNumber(activePath[Math.min(activePath.length - 1, Math.floor(enemy.step))], amount, "heal")));
+        next.forEach(healer => {
+          const healed = applyHealerPulse(next, healer);
+          if (healed.length) addEnemyEffect(activePath[Math.min(activePath.length - 1, Math.floor(healer.step))], "healPulse", ENEMY_BY_ID[healer.definitionId as EnemyId].color);
+          healed.forEach(({ enemy, amount }) => addCombatNumber(activePath[Math.min(activePath.length - 1, Math.floor(enemy.step))], amount, "heal"));
+        });
         const escaped = next.filter(e => e.hp > 0 && e.step >= activePath.length - 1);
         if (escaped.length) setLives(v => Math.max(0, v - escaped.length));
         next = next.filter(e => e.hp <= 0 || e.step < activePath.length - 1);
@@ -175,7 +184,12 @@ export default function Home() {
           }
         });
         if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: Math.max(1, t.critter.speed - (starterId === "sparkit" ? 1 : 0)) } : t));
-        const splitChildren = next.flatMap(parent => createSplitOffspring(parent, () => enemyId.current++, difficultyWave, chapter, waveHpMultiplier.current));
+        const splitChildren: Enemy[] = [];
+        next.forEach(parent => {
+          const children = createSplitOffspring(parent, () => enemyId.current++, difficultyWave, chapter, waveHpMultiplier.current);
+          if (children.length) addEnemyEffect(activePath[Math.min(activePath.length - 1, Math.floor(parent.step))], "splitBurst", ENEMY_BY_ID[parent.definitionId as EnemyId].color);
+          splitChildren.push(...children);
+        });
         return [...next.filter(e => e.hp > 0), ...splitChildren];
       });
     }, 280 / gameSpeed);
@@ -224,6 +238,8 @@ export default function Home() {
   const upcomingWave = Math.min(WAVES_PER_CHAPTER, wave + 1);
   const upcomingPlan = createWavePlan({ chapter, wave: upcomingWave, seed: mapSeed, extraEnemies: waveExtraEnemies.current });
   const upcomingEnemyIntel = groupWavePlan(upcomingPlan, waveHpMultiplier.current, starterId === "moonowl" ? 0.75 : 1).map(group => ({ icon: group.definition.icon, name: group.definition.name, count: group.count, hp: group.hp, shield: group.shield, ability: group.definition.abilityText }));
+  const hoveredEnemy = enemies.find(enemy => enemy.id === hoveredEnemyId) || null;
+  const hoveredEnemyDefinition = hoveredEnemy ? ENEMY_BY_ID[hoveredEnemy.definitionId as EnemyId] : null;
   const activeBuffs = [
     ...BLESSINGS.map(blessing => blessings[blessing.id] ? { icon: blessing.icon, name: `${blessing.name} ×${blessings[blessing.id]}`, description: blessing.description(blessings[blessing.id]) } : null),
     starCharmCount ? { icon: "⭐", name: `Astral Guardian's Grace ×${starCharmCount}`, description: `+${starCharmCount * 25}% guardian damage` } : null,
@@ -233,6 +249,12 @@ export default function Home() {
     const id = combatNumberId.current++;
     setCombatNumbers(current => [...current, { id, cell, value, kind, critical }]);
     window.setTimeout(() => setCombatNumbers(current => current.filter(number => number.id !== id)), 850);
+  }
+
+  function addEnemyEffect(cell: number, kind: EnemyEffect["kind"], color: string) {
+    const id = enemyEffectId.current++;
+    setEnemyEffects(current => [...current, { id, cell, kind, color }]);
+    window.setTimeout(() => setEnemyEffects(current => current.filter(effect => effect.id !== id)), 720);
   }
 
   function saveRunState(waveOverride = wave) {
@@ -375,7 +397,7 @@ export default function Home() {
     clearRunProgress(localStorage);
     resetRun();
     setEnemies([]);
-    setRunning(false); setPaused(false); setSettingsOpen(false); setAttackFx([]); setCombatNumbers([]); setInspectedTowerSlot(null);
+    setRunning(false); setPaused(false); setSettingsOpen(false); setAttackFx([]); setCombatNumbers([]); setEnemyEffects([]); setHoveredEnemyId(null); setInspectedTowerSlot(null);
     spawnQueue.current = []; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; wavePetalBonus.current = 0; runDamageMultiplier.current = 1;
     setMessage("Choose a starter for your new adventure.");
   }
@@ -449,7 +471,14 @@ export default function Home() {
                 </button>
               </Fragment>;
             })}
-            {enemies.map(e => { const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))]; return <div key={e.id} className={`enemy ${e.boss ? "boss" : ""}`} style={cellStyle(p)}>{e.boss && <small>BOSS</small>}<EnemyArt kind={e.kind} icon={e.icon} animated/>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>; })}
+            {enemies.map(e => {
+              const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))];
+              const definition = ENEMY_BY_ID[e.definitionId as EnemyId];
+              const statuses = [e.shield > 0 ? "🛡️" : null, (e.burnTicks || 0) > 0 ? "🔥" : null, (e.slowTicks || 0) > 0 ? "❄️" : null].filter(Boolean);
+              return <div key={e.id} tabIndex={0} role="group" aria-label={`${e.kind}, ${definition.role}, ${Math.max(0, Math.ceil(e.hp))} health${e.shield > 0 ? `, ${Math.ceil(e.shield)} shield` : ""}`} onMouseEnter={() => setHoveredEnemyId(e.id)} onMouseLeave={() => setHoveredEnemyId(current => current === e.id ? null : current)} onFocus={() => setHoveredEnemyId(e.id)} onBlur={() => setHoveredEnemyId(current => current === e.id ? null : current)} className={`enemy role-${definition.ability} ${e.boss ? "boss" : ""} ${(e.burnTicks || 0) > 0 ? "burning" : ""} ${(e.slowTicks || 0) > 0 ? "slowed" : ""}`} style={{...cellStyle(p), "--enemy-color": definition.color} as React.CSSProperties}>{e.boss && <small>BOSS</small>}{statuses.length > 0 && <span className="enemyStatuses">{statuses.map((status, index) => <i key={`${status}-${index}`}>{status}</i>)}</span>}<EnemyArt kind={e.kind} icon={e.icon} animated/>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>;
+            })}
+            {enemyEffects.map(effect => <i key={effect.id} className={`enemyEffect ${effect.kind}`} style={{...cellStyle(effect.cell), "--enemy-color": effect.color} as React.CSSProperties}><b/><em/></i>)}
+            {hoveredEnemy && hoveredEnemyDefinition && (() => { const cell = activePath[Math.min(activePath.length - 1, Math.floor(hoveredEnemy.step))]; const point = cellPoint(cell); return <aside className={`enemyInfo ${point.y < 28 ? "below" : "above"}`} style={{...cellStyle(cell), "--enemy-color": hoveredEnemyDefinition.color} as React.CSSProperties}><span>{hoveredEnemyDefinition.icon}</span><div><small>{hoveredEnemyDefinition.role}</small><b>{hoveredEnemyDefinition.name}</b><em>{Math.max(0, Math.ceil(hoveredEnemy.hp))}/{hoveredEnemy.maxHp} HP{hoveredEnemy.shield > 0 ? ` • ${Math.ceil(hoveredEnemy.shield)} shield` : ""}</em><p>{hoveredEnemyDefinition.abilityText}</p><i>{hoveredEnemyDefinition.speedMultiplier > 1.2 ? "FAST" : hoveredEnemyDefinition.speedMultiplier < 0.85 ? "SLOW" : "STEADY"}{(hoveredEnemy.burnTicks || 0) > 0 ? " • BURNING" : ""}{(hoveredEnemy.slowTicks || 0) > 0 ? " • SLOWED" : ""}</i></div></aside>; })()}
             {attackFx.map(fx => {
               const from = cellPoint(fx.from); const to = cellPoint(fx.to);
               return <i key={fx.id} className={`attackFx fx-${fx.critterId}`} style={{"--from-x":`${from.x}%`,"--from-y":`${from.y}%`,"--to-x":`${to.x}%`,"--to-y":`${to.y}%`,"--fx-color":fx.color} as React.CSSProperties}><b/></i>;
