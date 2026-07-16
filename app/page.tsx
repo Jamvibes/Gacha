@@ -3,9 +3,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats, starterBlessing } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
-import { BASE_CRITICAL_CHANCE, calculateHitDamage, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits } from "./game/abilities";
+import { BASE_CRITICAL_CHANCE, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
 import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
-import { FACTION_BY_ID, FACTIONS } from "./game/factions";
+import { FACTION_BONDS, FACTION_BY_ID, FACTIONS, getFactionBondStates } from "./game/factions";
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
 import { createWavePlan, groupWavePlan } from "./game/waves";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
@@ -72,6 +72,7 @@ export default function Home() {
   const activeChapter = CHAPTERS[chapter - 1];
   const activePath = useMemo(() => generateChapterPath(mapSeed, chapter, mapVersion), [mapSeed, chapter, mapVersion]);
   const placeableCells = useMemo(() => Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, cell) => cell).filter(cell => !activePath.includes(cell)), [activePath]);
+  const factionBonds = useMemo(() => getFactionBondStates(towers), [towers]);
 
   useEffect(() => {
     const progress = readMetaProgress(localStorage);
@@ -151,20 +152,30 @@ export default function Home() {
             const starterBoost = starterId === "mossback" ? 1.15 : 1;
             const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current);
             const abilityRank = t.critter.tier - 1;
-            const hits = selectAbilityHits(t.critter.ability, t.critter.tier, next, sortedTargets, target, activePath);
+            const bondLevel = factionBonds[t.critter.faction].level;
+            const hits = selectAbilityHits(t.critter.ability, t.critter.tier, next, sortedTargets, target, activePath, bondLevel);
             if (t.critter.ability === "burn") {
-              target.burnTicks = Math.max(target.burnTicks || 0, 3 + abilityRank);
-              target.burnDamage = Math.max(target.burnDamage || 0, Math.round(baseDamage * (0.2 + abilityRank * 0.05)));
+              const effect = burnEffect(baseDamage, t.critter.tier, bondLevel);
+              target.burnTicks = Math.max(target.burnTicks || 0, effect.ticks);
+              target.burnDamage = Math.max(target.burnDamage || 0, effect.damage);
+              if (effect.spreadMultiplier) {
+                const spreadTarget = selectBurnSpreadTarget(next, target, activePath);
+                if (spreadTarget) {
+                  spreadTarget.burnTicks = Math.max(spreadTarget.burnTicks || 0, effect.ticks);
+                  spreadTarget.burnDamage = Math.max(spreadTarget.burnDamage || 0, Math.round(effect.damage * effect.spreadMultiplier));
+                }
+              }
             } else if (t.critter.ability === "slow") {
-              target.slowTicks = Math.max(target.slowTicks || 0, 4 + abilityRank);
-              target.slowFactor = Math.max(target.slowFactor || 0, 0.45 + abilityRank * 0.075);
+              const effect = slowEffect(t.critter.tier, bondLevel);
+              target.slowTicks = Math.max(target.slowTicks || 0, effect.ticks);
+              target.slowFactor = Math.max(target.slowFactor || 0, effect.factor);
             }
             fired.push(t.slot);
             const newEffects: AttackFx[] = [];
             hits.forEach(hit => {
               const piercing = t.critter.ability === "piercing";
               const piercingBonus = piercing && hit.enemy.shield > 0 ? 1 + abilityRank * 0.15 : 1;
-              const critical = rollCritical();
+              const critical = rollCritical(Math.random, t.critter.faction === "starborn" ? criticalChanceBonus(bondLevel) : 0);
               const damage = calculateHitDamage(baseDamage, hit.multiplier, critical, piercingBonus);
               const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(hit.enemy.step))];
               if (piercing) {
@@ -179,7 +190,7 @@ export default function Home() {
               addCombatNumber(targetCell, damage, "damage", critical);
               window.setTimeout(() => setAttackFx(fx => fx.filter(item => item.id !== fxId)), 520);
             });
-            if (t.critter.ability === "push") target.step = Math.max(0, target.step - pushBackDistance(t.critter.tier, target.boss));
+            if (t.critter.ability === "push") target.step = Math.max(0, target.step - pushBackDistance(t.critter.tier, target.boss, bondLevel));
             setAttackFx(fx => [...fx, ...newEffects]);
           }
         });
@@ -194,7 +205,7 @@ export default function Home() {
       });
     }, 280 / gameSpeed);
     return () => clearInterval(timer);
-  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, gameSpeed]);
+  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, gameSpeed, factionBonds]);
 
   useEffect(() => {
     if (running && spawnQueue.current.length === 0 && enemies.length === 0) {
@@ -244,6 +255,9 @@ export default function Home() {
     ...BLESSINGS.map(blessing => blessings[blessing.id] ? { icon: blessing.icon, name: `${blessing.name} ×${blessings[blessing.id]}`, description: blessing.description(blessings[blessing.id]) } : null),
     starCharmCount ? { icon: "⭐", name: `Astral Guardian's Grace ×${starCharmCount}`, description: `+${starCharmCount * 25}% guardian damage` } : null,
   ].filter(Boolean) as { icon: string; name: string; description: string }[];
+  const placedFactionBonds = FACTIONS
+    .map(faction => ({ faction, ...factionBonds[faction.id], effects: FACTION_BONDS[faction.id] }))
+    .filter(bond => bond.count > 0);
 
   function addCombatNumber(cell: number, value: number, kind: "damage" | "heal", critical = false) {
     const id = combatNumberId.current++;
@@ -494,6 +508,7 @@ export default function Home() {
               </button>)}
             </div>
             <div className="selectedInfo"><span style={{background:selectedCritter.color}}><CritterArt critter={selectedCritter}/></span><div><b>{selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range} • {remainingCopies(selected)} available</small></div></div>
+            <div className="factionBondPanel"><div className="buffTitle"><b>Faction Bonds</b><small>Placed copies activate bonds</small></div>{placedFactionBonds.length ? <div className="factionBondList">{placedFactionBonds.map(({faction,count,level,effects}) => <span key={faction.id} className={level ? `active level-${level}` : ""}><i>{faction.icon}</i><b>{faction.name}<em>{count}/3</em></b><small>{level === 2 ? effects.levelTwo : level === 1 ? effects.levelOne : `Place ${2 - count} more ${faction.name} guardian to activate Bond I.`}</small></span>)}</div> : <p>Place 2 guardians from one faction to activate its first bond.</p>}</div>
             <div className="buffPanel"><div className="buffTitle"><b>Run Blessings</b><small>Last until this run ends</small></div>{activeBuffs.length ? <div className="buffList">{activeBuffs.map(blessing => <span key={blessing.name}><i>{blessing.icon}</i><b>{blessing.name}</b><small>{blessing.description}</small></span>)}</div> : <p>No Blessings yet. Event decisions and relics can grant them.</p>}</div>
             {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><EnemyArt kind={enemy.name} icon={enemy.icon}/><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP{enemy.shield ? ` • ${enemy.shield} shield` : ""} each</small><p>{enemy.ability}</p></div></article>)}</div>}
             {wave > 0 && wave < WAVES_PER_CHAPTER && <div className={`waveCondition ${wave === WAVES_PER_CHAPTER - 1 ? "bossWarning" : ""}`}><small>{wave === WAVES_PER_CHAPTER - 1 ? "BOSS APPROACHING" : "NEXT WAVE"}</small><b>{wave === WAVES_PER_CHAPTER - 1 ? activeChapter.bossName : nextWaveNote}</b></div>}

@@ -1,5 +1,6 @@
 import { BOARD_SIZE } from "./content.ts";
 import type { AbilityId, Enemy } from "./types.ts";
+import type { FactionBondLevel } from "./factions.ts";
 
 export const BASE_CRITICAL_CHANCE = 0.1;
 export const CRITICAL_DAMAGE_MULTIPLIER = 2;
@@ -16,11 +17,11 @@ const cellDistance = (first: number, second: number) => {
   return Math.hypot(columnGap, rowGap);
 };
 
-export function selectAbilityHits(ability: AbilityId, tier: 1 | 2 | 3, enemies: Enemy[], targetsInRange: Enemy[], primary: Enemy, path: number[]): AbilityHit[] {
+export function selectAbilityHits(ability: AbilityId, tier: 1 | 2 | 3, enemies: Enemy[], targetsInRange: Enemy[], primary: Enemy, path: number[], bondLevel: FactionBondLevel = 0): AbilityHit[] {
   const rank = tier - 1;
   if (ability === "splash") {
     const targetCell = path[Math.min(path.length - 1, Math.floor(primary.step))];
-    const radius = 1.45 + rank * 0.3;
+    const radius = 1.45 + rank * 0.3 + bondLevel * 0.5;
     const limit = 4 + rank;
     const secondaryMultiplier = 0.65 + rank * 0.075;
     const nearby = enemies
@@ -34,20 +35,47 @@ export function selectAbilityHits(ability: AbilityId, tier: 1 | 2 | 3, enemies: 
   }
   if (ability === "lightning") {
     const retention = 0.72 + rank * 0.06;
-    return targetsInRange.slice(0, 3 + rank).map((enemy, index) => ({ enemy, multiplier: retention ** index }));
+    return targetsInRange.slice(0, 3 + rank + bondLevel).map((enemy, index) => ({ enemy, multiplier: retention ** index }));
   }
   return [{ enemy: primary, multiplier: 1 }];
 }
 
-export function rollCritical(random = Math.random) {
-  return random() < BASE_CRITICAL_CHANCE;
+export function criticalChanceBonus(bondLevel: FactionBondLevel) {
+  return bondLevel * 0.05;
+}
+
+export function rollCritical(random = Math.random, bonusChance = 0) {
+  return random() < BASE_CRITICAL_CHANCE + bonusChance;
 }
 
 export function calculateHitDamage(baseDamage: number, hitMultiplier: number, critical: boolean, piercingBonus = 1) {
   return Math.round(baseDamage * hitMultiplier * piercingBonus * (critical ? CRITICAL_DAMAGE_MULTIPLIER : 1));
 }
 
-export function pushBackDistance(tier: 1 | 2 | 3, boss = false) {
-  const distance = 0.75 + (tier - 1) * 0.35;
+export function pushBackDistance(tier: 1 | 2 | 3, boss = false, bondLevel: FactionBondLevel = 0) {
+  const distance = (0.75 + (tier - 1) * 0.35) * (1 + bondLevel * 0.25);
   return boss ? distance * 0.5 : distance;
+}
+
+export function burnEffect(baseDamage: number, tier: 1 | 2 | 3, bondLevel: FactionBondLevel = 0) {
+  const rank = tier - 1;
+  return {
+    ticks: 3 + rank + (bondLevel > 0 ? 1 : 0),
+    damage: Math.round(baseDamage * (0.2 + rank * 0.05)),
+    spreadMultiplier: bondLevel === 2 ? 0.5 : 0,
+  };
+}
+
+export function selectBurnSpreadTarget(enemies: Enemy[], primary: Enemy, path: number[]) {
+  const targetCell = path[Math.min(path.length - 1, Math.floor(primary.step))];
+  return enemies
+    .filter(enemy => enemy.id !== primary.id && enemy.hp > 0)
+    .map(enemy => ({ enemy, distance: cellDistance(path[Math.min(path.length - 1, Math.floor(enemy.step))], targetCell) }))
+    .filter(item => item.distance <= 1.5)
+    .sort((a, b) => a.distance - b.distance || b.enemy.step - a.enemy.step)[0]?.enemy ?? null;
+}
+
+export function slowEffect(tier: 1 | 2 | 3, bondLevel: FactionBondLevel = 0) {
+  const rank = tier - 1;
+  return { ticks: 4 + rank, factor: Math.min(0.85, 0.45 + rank * 0.075 + bondLevel * 0.1) };
 }
