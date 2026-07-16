@@ -34,7 +34,9 @@ const baseRun = {
   towers: [{ slot: 2, critterId: "emberfox", sourceId: "emberfox" }],
   runUnlocked: ["emberfox"],
   guardianCopies: { emberfox: 2 },
-  eventBuffs: { harvest: 1, spring: 0, warden: 0 },
+  blessings: { harvest: 1, spring: 0, warden: 0 },
+  activeEventId: null,
+  recentEventIds: [],
   starCharmCount: 0,
   nextWaveNote: "Moonbloom Covenant",
   eventOpen: false,
@@ -74,7 +76,7 @@ test("malformed permanent progression falls back without deleting defaults", () 
 
 test("version one run saves migrate legacy tower slots", () => {
   const storage = new MemoryStorage();
-  storage.setItem(RUN_SAVE_KEY, JSON.stringify({ ...baseRun, version: 1, mapVersion: undefined, towers: [{ slot: 0, critterId: "emberfox" }], savedAt: 1 }));
+  storage.setItem(RUN_SAVE_KEY, JSON.stringify({ ...baseRun, version: 1, mapVersion: undefined, blessings: undefined, eventBuffs: { harvest: 1, spring: 0, warden: 0 }, towers: [{ slot: 0, critterId: "emberfox" }], savedAt: 1 }));
 
   const restored = readRunProgress(storage);
   assert.ok(restored);
@@ -89,14 +91,33 @@ test("current run saves round-trip through the versioned boundary", () => {
   writeRunProgress(storage, baseRun, 123456);
 
   const serialized = JSON.parse(storage.getItem(RUN_SAVE_KEY));
-  assert.equal(serialized.version, 2);
+  assert.equal(serialized.version, 3);
   assert.equal(serialized.savedAt, 123456);
 
   const restored = readRunProgress(storage);
   assert.ok(restored);
   assert.equal(restored.chapter, 1);
   assert.equal(restored.towers[0].slot, 2);
-  assert.equal(restored.eventBuffs.harvest, 1);
+  assert.equal(restored.blessings.harvest, 1);
+});
+
+test("an open event restores with the same choices instead of rerolling", () => {
+  const storage = new MemoryStorage();
+  writeRunProgress(storage, { ...baseRun, chapter: 2, wave: 4, eventOpen: true, activeEventId: "fallen-star", recentEventIds: ["moonlit-crossroads"] }, 123456);
+  const first = readRunProgress(storage);
+  const second = readRunProgress(storage);
+  assert.equal(first.activeEventId, "fallen-star");
+  assert.equal(second.activeEventId, "fallen-star");
+  assert.deepEqual(second.recentEventIds, ["moonlit-crossroads"]);
+});
+
+test("older open-event saves receive one deterministic migrated event", () => {
+  const storage = new MemoryStorage();
+  storage.setItem(RUN_SAVE_KEY, JSON.stringify({ ...baseRun, version: 2, blessings: undefined, eventBuffs: baseRun.blessings, eventOpen: true, activeEventId: undefined, recentEventIds: undefined, savedAt: 1 }));
+  const first = readRunProgress(storage);
+  const second = readRunProgress(storage);
+  assert.ok(first.activeEventId);
+  assert.equal(second.activeEventId, first.activeEventId);
 });
 
 test("invalid run saves are rejected and cleared", () => {
