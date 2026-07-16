@@ -1,5 +1,6 @@
 import { emptyBlessings } from "./blessings.ts";
 import { formatEventText } from "./events.ts";
+import { starterStartingCopies, starterStartingLives } from "./starter-bonuses.ts";
 import type { EventChoiceDefinition } from "./events.ts";
 import type { BlessingCounts, Critter, RestoredRun, Tower } from "./types.ts";
 
@@ -102,9 +103,9 @@ export function runReducer(state: RunState, action: RunAction): RunState {
       starterId: action.starterId,
       selected: action.starterId,
       mapSeed: action.mapSeed,
-      lives: action.starterId === "bubblefin" ? 13 : 10,
+      lives: starterStartingLives(action.starterId),
       runUnlocked: [action.starterId],
-      guardianCopies: { [action.starterId]: action.starterId === "emberfox" ? 2 : 1 },
+      guardianCopies: { [action.starterId]: starterStartingCopies(action.starterId) },
     };
   }
 
