@@ -5,9 +5,15 @@ import {
   STARTER_BONUSES,
   starterAttackSpeedBonus,
   starterBlessing,
+  starterChainDamageMultiplier,
   starterDamageMultiplier,
   starterEnemyShieldMultiplier,
+  starterPeriodicBurn,
+  starterPeriodicPush,
+  starterPiercingCriticalMultiplier,
   starterRangeBonus,
+  starterSlowDurationMultiplier,
+  starterSplashDamageMultiplier,
   starterStartingCopies,
   starterStartingLives,
 } from "../app/game/starter-bonuses.ts";
@@ -20,13 +26,13 @@ test("every eligible starter has one catalogue entry", () => {
   }
 });
 
-test("the starter catalogue preserves all six current bonuses", () => {
-  assert.equal(starterStartingCopies("emberfox"), 2);
-  assert.equal(starterStartingLives("bubblefin"), 13);
-  assert.equal(starterDamageMultiplier("mossback"), 1.15);
-  assert.equal(starterAttackSpeedBonus("sparkit"), 1);
-  assert.equal(starterRangeBonus("bloomwing"), 1);
-  assert.equal(starterEnemyShieldMultiplier("moonowl"), 0.75);
+test("the starter catalogue defines all six ability-focused bonuses", () => {
+  assert.deepEqual(starterPeriodicBurn("emberfox"), { type: "periodicBurn", intervalTicks: 5, burnTicks: 3, damage: 4 });
+  assert.equal(starterSplashDamageMultiplier("bubblefin"), 1.1);
+  assert.equal(starterSlowDurationMultiplier("mossback"), 1.2);
+  assert.equal(starterChainDamageMultiplier("sparkit"), 1.1);
+  assert.deepEqual(starterPeriodicPush("bloomwing"), { type: "periodicPush", intervalTicks: 10, distance: 0.75 });
+  assert.equal(starterPiercingCriticalMultiplier("moonowl"), 2.5);
 });
 
 test("unrelated and future starters receive neutral defaults", () => {
@@ -36,4 +42,10 @@ test("unrelated and future starters receive neutral defaults", () => {
   assert.equal(starterAttackSpeedBonus("future-starter"), 0);
   assert.equal(starterRangeBonus("future-starter"), 0);
   assert.equal(starterEnemyShieldMultiplier("future-starter"), 1);
+  assert.equal(starterSplashDamageMultiplier("future-starter"), 1);
+  assert.equal(starterSlowDurationMultiplier("future-starter"), 1);
+  assert.equal(starterChainDamageMultiplier("future-starter"), 1);
+  assert.equal(starterPiercingCriticalMultiplier("future-starter"), 2);
+  assert.equal(starterPeriodicBurn("future-starter"), null);
+  assert.equal(starterPeriodicPush("future-starter"), null);
 });

@@ -13,10 +13,10 @@ test("starting a run applies starter-specific defaults in one transition", () =>
   assert.equal(emberRun.selected, "emberfox");
   assert.equal(emberRun.mapSeed, 42);
   assert.deepEqual(emberRun.runUnlocked, ["emberfox"]);
-  assert.equal(emberRun.guardianCopies.emberfox, 2);
+  assert.equal(emberRun.guardianCopies.emberfox, 1);
 
   const bubbleRun = runReducer(createInitialRunState(), { type: "START_RUN", starterId: "bubblefin", mapSeed: 7 });
-  assert.equal(bubbleRun.lives, 13);
+  assert.equal(bubbleRun.lives, 10);
   assert.equal(bubbleRun.guardianCopies.bubblefin, 1);
 });
 

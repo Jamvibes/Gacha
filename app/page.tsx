@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
-import { BASE_CRITICAL_CHANCE, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
+import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
 import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
 import { FACTION_BONDS, FACTION_BY_ID, FACTIONS, getFactionBondStates } from "./game/factions";
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
@@ -11,7 +11,7 @@ import { createWavePlan, groupWavePlan } from "./game/waves";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
 import { useRunState } from "./game/use-run-state";
-import { starterAttackSpeedBonus, starterBlessing, starterDamageMultiplier, starterEnemyShieldMultiplier, starterRangeBonus } from "./game/starter-bonuses";
+import { starterAttackSpeedBonus, starterBlessing, starterChainDamageMultiplier, starterDamageMultiplier, starterEnemyShieldMultiplier, starterPeriodicBurn, starterPeriodicPush, starterPiercingCriticalMultiplier, starterRangeBonus, starterSlowDurationMultiplier, starterSplashDamageMultiplier } from "./game/starter-bonuses";
 import type { EventChoiceDefinition } from "./game/events";
 import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, StarterStats } from "./game/types";
 
@@ -66,6 +66,7 @@ export default function Home() {
   const enemyEffectId = useRef(1);
   const spawnQueue = useRef<EnemyId[]>([]);
   const spawnTimer = useRef(0);
+  const starterEffectTick = useRef(0);
   const waveHpMultiplier = useRef(1);
   const waveExtraEnemies = useRef(0);
   const wavePetalBonus = useRef(0);
@@ -109,6 +110,7 @@ export default function Home() {
   useEffect(() => {
     if (!running || paused) return;
     const timer = window.setInterval(() => {
+      starterEffectTick.current++;
       spawnTimer.current--;
       const difficultyWave = (chapter - 1) * WAVES_PER_CHAPTER + wave;
       if (spawnQueue.current.length > 0 && spawnTimer.current <= 0) {
@@ -127,6 +129,21 @@ export default function Home() {
           const shieldDamage = Math.min(e.shield, burnDamage);
           return { ...e, shield: e.shield - shieldDamage, hp: e.hp - (burnDamage - shieldDamage), burnTicks: Math.max(0, (e.burnTicks || 0) - 1), step: e.step + 0.14 * e.speedMultiplier * ((e.slowTicks || 0) > 0 ? 1 - (e.slowFactor || 0.45) : 1), slowTicks: Math.max(0, (e.slowTicks || 0) - 1) };
         });
+        const periodicBurn = starterPeriodicBurn(starterId);
+        if (periodicBurn && starterEffectTick.current % periodicBurn.intervalTicks === 0) {
+          const candidates = next.filter(enemy => enemy.hp > 0);
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          if (target) {
+            target.burnTicks = Math.max(target.burnTicks || 0, periodicBurn.burnTicks);
+            target.burnDamage = Math.max(target.burnDamage || 0, periodicBurn.damage);
+          }
+        }
+        const periodicPush = starterPeriodicPush(starterId);
+        if (periodicPush && starterEffectTick.current % periodicPush.intervalTicks === 0) {
+          const candidates = next.filter(enemy => enemy.hp > 0);
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          if (target) target.step = Math.max(0, target.step - periodicPush.distance * (target.boss ? 0.5 : 1));
+        }
         next.forEach(healer => {
           const healed = applyHealerPulse(next, healer);
           if (healed.length) addEnemyEffect(activePath[Math.min(activePath.length - 1, Math.floor(healer.step))], "healPulse", ENEMY_BY_ID[healer.definitionId as EnemyId].color);
@@ -154,7 +171,10 @@ export default function Home() {
             const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current);
             const abilityRank = t.critter.tier - 1;
             const bondLevel = factionBonds[t.critter.faction].level;
-            const hits = selectAbilityHits(t.critter.ability, t.critter.tier, next, sortedTargets, target, activePath, bondLevel);
+            const hits = selectAbilityHits(t.critter.ability, t.critter.tier, next, sortedTargets, target, activePath, bondLevel, {
+              splashDamageMultiplier: starterSplashDamageMultiplier(starterId),
+              chainDamageMultiplier: starterChainDamageMultiplier(starterId),
+            });
             if (t.critter.ability === "burn") {
               const effect = burnEffect(baseDamage, t.critter.tier, bondLevel);
               target.burnTicks = Math.max(target.burnTicks || 0, effect.ticks);
@@ -167,7 +187,7 @@ export default function Home() {
                 }
               }
             } else if (t.critter.ability === "slow") {
-              const effect = slowEffect(t.critter.tier, bondLevel);
+              const effect = slowEffect(t.critter.tier, bondLevel, starterSlowDurationMultiplier(starterId));
               target.slowTicks = Math.max(target.slowTicks || 0, effect.ticks);
               target.slowFactor = Math.max(target.slowFactor || 0, effect.factor);
             }
@@ -177,7 +197,8 @@ export default function Home() {
               const piercing = t.critter.ability === "piercing";
               const piercingBonus = piercing && hit.enemy.shield > 0 ? 1 + abilityRank * 0.15 : 1;
               const critical = rollCritical(Math.random, t.critter.faction === "starborn" ? criticalChanceBonus(bondLevel) : 0);
-              const damage = calculateHitDamage(baseDamage, hit.multiplier, critical, piercingBonus);
+              const criticalMultiplier = piercing ? starterPiercingCriticalMultiplier(starterId) : CRITICAL_DAMAGE_MULTIPLIER;
+              const damage = calculateHitDamage(baseDamage, hit.multiplier, critical, piercingBonus, criticalMultiplier);
               const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(hit.enemy.step))];
               if (piercing) {
                 hit.enemy.hp -= damage;
@@ -387,6 +408,7 @@ export default function Home() {
     setWave(next);
     spawnQueue.current = [...createWavePlan({ chapter, wave: next, seed: mapSeed, extraEnemies: waveExtraEnemies.current }).enemyIds];
     spawnTimer.current = 0;
+    starterEffectTick.current = 0;
     setRunning(true);
     setMessage(next === WAVES_PER_CHAPTER ? `${activeChapter.bossName} has appeared—the boss battle begins!` : `Wave ${next} is rustling through ${activeChapter.region}…`);
   }
@@ -561,7 +583,7 @@ export default function Home() {
               <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * starterDamageMultiplier(starterId) * runDamageMultiplier.current)}</b></span>
               <span><small>RANGE</small><b>{inspectedTower.critter.range + starterRangeBonus(starterId)} tiles</b></span>
               <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - starterAttackSpeedBonus(starterId)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
-              <span><small>CRITICAL CHANCE</small><b>{Math.round(BASE_CRITICAL_CHANCE * 100)}% • ×2 damage</b></span>
+              <span><small>CRITICAL CHANCE</small><b>{Math.round(BASE_CRITICAL_CHANCE * 100)}% • ×{inspectedTower.critter.ability === "piercing" ? starterPiercingCriticalMultiplier(starterId) : CRITICAL_DAMAGE_MULTIPLIER} damage</b></span>
             </div>
             <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>
             {inspectedEvolutions.length ? <div className="evolutionButtons">{inspectedEvolutions.map(evolution => <button key={evolution.id} className="upgradeButton" onClick={() => evolveTower(evolution)}>{evolution.evolutionPath === "alternative" ? "Alternative: " : ""}Evolve into {evolution.name} • 💠 {inspectedTower.critter.tier === 1 ? 1 : 2}</button>)}</div> : <button className="upgradeButton" disabled>Final evolution reached</button>}

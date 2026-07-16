@@ -10,6 +10,7 @@ export function rangeIndicatorDiameter(range: number, boardSize: number) {
 }
 
 export type AbilityHit = { enemy: Enemy; multiplier: number };
+export type AbilityHitModifiers = { splashDamageMultiplier?: number; chainDamageMultiplier?: number };
 
 const cellDistance = (first: number, second: number) => {
   const columnGap = first % BOARD_SIZE - second % BOARD_SIZE;
@@ -17,13 +18,13 @@ const cellDistance = (first: number, second: number) => {
   return Math.hypot(columnGap, rowGap);
 };
 
-export function selectAbilityHits(ability: AbilityId, tier: 1 | 2 | 3, enemies: Enemy[], targetsInRange: Enemy[], primary: Enemy, path: number[], bondLevel: FactionBondLevel = 0): AbilityHit[] {
+export function selectAbilityHits(ability: AbilityId, tier: 1 | 2 | 3, enemies: Enemy[], targetsInRange: Enemy[], primary: Enemy, path: number[], bondLevel: FactionBondLevel = 0, modifiers: AbilityHitModifiers = {}): AbilityHit[] {
   const rank = tier - 1;
   if (ability === "splash") {
     const targetCell = path[Math.min(path.length - 1, Math.floor(primary.step))];
     const radius = 1.45 + rank * 0.3 + bondLevel * 0.5;
     const limit = 4 + rank;
-    const secondaryMultiplier = 0.65 + rank * 0.075;
+    const secondaryMultiplier = (0.65 + rank * 0.075) * (modifiers.splashDamageMultiplier ?? 1);
     const nearby = enemies
       .filter(enemy => enemy.id !== primary.id && enemy.hp > 0)
       .map(enemy => ({ enemy, distance: cellDistance(path[Math.min(path.length - 1, Math.floor(enemy.step))], targetCell) }))
@@ -35,7 +36,7 @@ export function selectAbilityHits(ability: AbilityId, tier: 1 | 2 | 3, enemies: 
   }
   if (ability === "lightning") {
     const retention = 0.72 + rank * 0.06;
-    return targetsInRange.slice(0, 3 + rank + bondLevel).map((enemy, index) => ({ enemy, multiplier: retention ** index }));
+    return targetsInRange.slice(0, 3 + rank + bondLevel).map((enemy, index) => ({ enemy, multiplier: retention ** index * (index > 0 ? modifiers.chainDamageMultiplier ?? 1 : 1) }));
   }
   return [{ enemy: primary, multiplier: 1 }];
 }
@@ -48,8 +49,8 @@ export function rollCritical(random = Math.random, bonusChance = 0) {
   return random() < BASE_CRITICAL_CHANCE + bonusChance;
 }
 
-export function calculateHitDamage(baseDamage: number, hitMultiplier: number, critical: boolean, piercingBonus = 1) {
-  return Math.round(baseDamage * hitMultiplier * piercingBonus * (critical ? CRITICAL_DAMAGE_MULTIPLIER : 1));
+export function calculateHitDamage(baseDamage: number, hitMultiplier: number, critical: boolean, piercingBonus = 1, criticalMultiplier = CRITICAL_DAMAGE_MULTIPLIER) {
+  return Math.round(baseDamage * hitMultiplier * piercingBonus * (critical ? criticalMultiplier : 1));
 }
 
 export function pushBackDistance(tier: 1 | 2 | 3, boss = false, bondLevel: FactionBondLevel = 0) {
@@ -75,7 +76,7 @@ export function selectBurnSpreadTarget(enemies: Enemy[], primary: Enemy, path: n
     .sort((a, b) => a.distance - b.distance || b.enemy.step - a.enemy.step)[0]?.enemy ?? null;
 }
 
-export function slowEffect(tier: 1 | 2 | 3, bondLevel: FactionBondLevel = 0) {
+export function slowEffect(tier: 1 | 2 | 3, bondLevel: FactionBondLevel = 0, durationMultiplier = 1) {
   const rank = tier - 1;
-  return { ticks: 4 + rank, factor: Math.min(0.85, 0.45 + rank * 0.075 + bondLevel * 0.1) };
+  return { ticks: (4 + rank) * durationMultiplier, factor: Math.min(0.85, 0.45 + rank * 0.075 + bondLevel * 0.1) };
 }
