@@ -35,7 +35,7 @@ const baseRun = {
   runUnlocked: ["emberfox"],
   guardianCopies: { emberfox: 2 },
   guardianForms: { emberfox: 2 },
-  blessings: { harvest: 1, spring: 0, warden: 0 },
+  blessings: { harvest: 1, warden: 0 },
   activeEventId: null,
   recentEventIds: [],
   starCharmCount: 0,
@@ -86,6 +86,7 @@ test("version one run saves migrate legacy tower slots", () => {
   assert.equal(restored.towers[0].sourceId, "emberfox");
   assert.equal(restored.guardianCopies.emberfox, 2);
   assert.deepEqual(restored.guardianForms, { emberfox: 2 });
+  assert.deepEqual(restored.blessings, { harvest: 1, warden: 0 });
 });
 
 test("current run saves round-trip through the versioned boundary", () => {

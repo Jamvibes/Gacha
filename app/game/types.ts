@@ -45,7 +45,7 @@ export type Enemy = {
 };
 
 export type Tower = { slot: number; critter: Critter; cooldown: number; sourceId: string };
-export type BlessingId = "harvest" | "spring" | "warden";
+export type BlessingId = "harvest" | "warden";
 export type BossReward = "heartseed" | "embercore" | "starcharm";
 export type AttackFx = { id: number; from: number; to: number; color: string; critterId: string };
 export type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal"; critical?: boolean };
