@@ -1,4 +1,4 @@
-export type AbilityId = "burn" | "waterSplash" | "slow" | "chain" | "shieldPierce" | "beam";
+export type AbilityId = "burn" | "splash" | "slow" | "lightning" | "piercing" | "push";
 
 export type Critter = {
   id: string;
@@ -41,7 +41,7 @@ export type Tower = { slot: number; critter: Critter; cooldown: number; sourceId
 export type BlessingId = "harvest" | "spring" | "warden";
 export type BossReward = "heartseed" | "embercore" | "starcharm";
 export type AttackFx = { id: number; from: number; to: number; color: string; critterId: string };
-export type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal" };
+export type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal"; critical?: boolean };
 export type StarterStats = { runs: number; victories: number; bossesDefeated: number; wavesCleared: number; highestChapter: number };
 export type BlessingCounts = Record<BlessingId, number>;
 export type MetaProgress = { version: 1; owned: string[]; petals: number; stats: Record<string, StarterStats> };
