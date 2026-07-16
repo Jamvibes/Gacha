@@ -6,14 +6,16 @@ import { BLESSING_BY_ID } from "../app/game/blessings.ts";
 
 const context = (overrides = {}) => ({ chapter: 1, wave: 4, seed: 123, recentEventIds: [], ...overrides });
 
-test("specified events take priority on configured waves", () => {
-  assert.equal(selectScheduledEvent(context({ wave: 2 }))?.id, "heart-tree-whisper");
-  assert.equal(selectEventForWave(context({ wave: 2 }))?.id, "heart-tree-whisper");
-  assert.equal(selectScheduledEvent(context({ wave: 4 })), null);
+test("no ordinary event is currently guaranteed on a particular wave", () => {
+  for (let chapter = 1; chapter <= 3; chapter++) {
+    for (let wave = 1; wave <= 9; wave++) assert.equal(selectScheduledEvent(context({ chapter, wave })), null);
+  }
+  assert.ok(selectEventForWave(context({ wave: 2 })), "wave 2 may still draw from the random event pool");
 });
 
 test("pool eligibility respects chapter restrictions", () => {
   const chapterOne = new Set(eligiblePoolEvents(context({ chapter: 1 })).map(event => event.id));
+  assert.ok(chapterOne.has("heart-tree-whisper"));
   assert.ok(chapterOne.has("moonlit-crossroads"));
   assert.ok(chapterOne.has("mushroom-circle"));
   assert.ok(!chapterOne.has("fallen-star"));
@@ -26,7 +28,7 @@ test("pool eligibility respects chapter restrictions", () => {
 });
 
 test("weighted pool selection responds to its random roll", () => {
-  assert.equal(selectPooledEvent(context(), () => 0)?.id, "moonlit-crossroads");
+  assert.equal(selectPooledEvent(context(), () => 0)?.id, "heart-tree-whisper");
   assert.equal(selectPooledEvent(context(), () => 0.999999)?.id, "mushroom-circle");
 });
 
@@ -36,7 +38,7 @@ test("different run seeds can draw different eligible events", () => {
 });
 
 test("the two most recent events are excluded when alternatives exist", () => {
-  const selected = selectPooledEvent(context({ chapter: 2, recentEventIds: ["moonlit-crossroads", "mushroom-circle"] }), () => 0);
+  const selected = selectPooledEvent(context({ chapter: 2, recentEventIds: ["moonlit-crossroads", "mushroom-circle"] }), () => 0.999999);
   assert.equal(selected?.id, "fallen-star");
 });
 
