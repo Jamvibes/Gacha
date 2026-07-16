@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ENEMY_BY_ID, ENEMY_DEFINITIONS, applyHealerPulse, createEnemy, createSplitOffspring } from "../app/game/enemies.ts";
+import { getEnemyStatuses } from "../app/game/enemy-statuses.ts";
 import { createWavePlan, groupWavePlan } from "../app/game/waves.ts";
 
 test("the initial enemy roster covers every requested role", () => {
@@ -67,4 +68,20 @@ test("a defeated splitter creates two fragile children only once", () => {
   assert.equal(children.length, 2);
   assert.ok(children.every(child => child.definitionId === "gloomlet" && child.step <= 5));
   assert.deepEqual(createSplitOffspring(parent, () => id++, 8, 1), []);
+});
+
+test("enemy status summaries cover active effects and innate abilities", () => {
+  const brute = createEnemy(ENEMY_BY_ID["bramble-brute"], 1, 8, 1);
+  brute.burnTicks = 3;
+  brute.burnDamage = 4;
+  brute.slowTicks = 4.8;
+  brute.slowFactor = 0.45;
+  const bruteStatuses = getEnemyStatuses(brute, ENEMY_BY_ID["bramble-brute"]);
+  assert.deepEqual(bruteStatuses.map(status => status.id), ["shield", "burn", "slow"]);
+  assert.match(bruteStatuses[1].detail, /3 ticks/);
+
+  const healer = createEnemy(ENEMY_BY_ID["mender-moth"], 2, 8, 1);
+  const splitter = createEnemy(ENEMY_BY_ID.shadepod, 3, 8, 1);
+  assert.deepEqual(getEnemyStatuses(healer, ENEMY_BY_ID["mender-moth"]).map(status => status.id), ["heal"]);
+  assert.deepEqual(getEnemyStatuses(splitter, ENEMY_BY_ID.shadepod).map(status => status.id), ["split"]);
 });
