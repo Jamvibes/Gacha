@@ -3,7 +3,8 @@
 import { useMemo, useReducer } from "react";
 import { createInitialRunState, runReducer } from "./run";
 import type { RunState } from "./run";
-import type { Critter, EventChoice, RestoredRun } from "./types";
+import type { EventChoiceDefinition } from "./events";
+import type { Critter, RestoredRun } from "./types";
 
 export function useRunState() {
   const [state, dispatch] = useReducer(runReducer, undefined, createInitialRunState);
@@ -28,7 +29,7 @@ export function useRunState() {
       setBossRewardOpen: setter("bossRewardOpen"),
       setAdventureComplete: setter("adventureComplete"),
       setGameSpeed: setter("gameSpeed"),
-      setEventBuffs: setter("eventBuffs"),
+      setBlessings: setter("blessings"),
       setStarCharmCount: setter("starCharmCount"),
     };
   }, []);
@@ -37,8 +38,8 @@ export function useRunState() {
     restoreRun: (restored: RestoredRun) => dispatch({ type: "RESTORE_RUN", restored }),
     startRun: (starterId: string, mapSeed: number) => dispatch({ type: "START_RUN", starterId, mapSeed }),
     recruitRunGuardian: (critter: Critter) => dispatch({ type: "RECRUIT_GUARDIAN", critter }),
-    gainRunBlessing: (choice: EventChoice, selectedName: string) => dispatch({ type: "GAIN_BLESSING", choice, selectedName }),
-    finishRunWave: (boss: boolean, recruitChoices: Critter[] = []) => dispatch({ type: "FINISH_WAVE", boss, recruitChoices }),
+    resolveRunEvent: (choice: EventChoiceDefinition, selectedName: string) => dispatch({ type: "RESOLVE_EVENT", choice, selectedName }),
+    finishRunWave: (boss: boolean, recruitChoices: Critter[] = [], eventId: string | null = null) => dispatch({ type: "FINISH_WAVE", boss, recruitChoices, eventId }),
     enterRunChapter: (chapter: number) => dispatch({ type: "ENTER_CHAPTER", chapter }),
     completeRun: () => dispatch({ type: "COMPLETE_ADVENTURE" }),
     resetRun: () => dispatch({ type: "RESET_RUN" }),

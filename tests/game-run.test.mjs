@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { CRITTERS } from "../app/game/content.ts";
+import { EVENT_BY_ID } from "../app/game/events.ts";
 import { createInitialRunState, runReducer } from "../app/game/run.ts";
 
 const critter = id => CRITTERS.find(option => option.id === id);
@@ -30,36 +31,41 @@ test("recruitment updates roster, copies, selection, and wave note together", ()
 });
 
 test("blessing actions atomically apply their run effects", () => {
-  const base = { ...createInitialRunState(), selected: "emberfox", guardianCopies: { emberfox: 1 }, eventOpen: true, lives: 19 };
-  const harvest = runReducer(base, { type: "GAIN_BLESSING", choice: "harvest", selectedName: "Emberfox" });
+  const base = { ...createInitialRunState(), selected: "emberfox", guardianCopies: { emberfox: 1 }, eventOpen: true, activeEventId: "moonlit-crossroads", lives: 19 };
+  const choices = EVENT_BY_ID["moonlit-crossroads"].choices;
+  const harvest = runReducer(base, { type: "RESOLVE_EVENT", choice: choices.find(choice => choice.id === "harvest-moonpetals"), selectedName: "Emberfox" });
   assert.equal(harvest.dewshards, 2);
-  assert.equal(harvest.eventBuffs.harvest, 1);
+  assert.equal(harvest.blessings.harvest, 1);
   assert.equal(harvest.eventOpen, false);
+  assert.equal(harvest.activeEventId, null);
+  assert.deepEqual(harvest.recentEventIds, ["moonlit-crossroads"]);
 
-  const spring = runReducer(base, { type: "GAIN_BLESSING", choice: "spring", selectedName: "Emberfox" });
+  const spring = runReducer(base, { type: "RESOLVE_EVENT", choice: choices.find(choice => choice.id === "listen-to-spring"), selectedName: "Emberfox" });
   assert.equal(spring.dewshards, 1);
   assert.equal(spring.guardianCopies.emberfox, 2);
-  assert.equal(spring.eventBuffs.spring, 1);
+  assert.equal(spring.blessings.spring, 1);
+  assert.match(spring.nextWaveNote, /Emberfox/);
 
-  const warden = runReducer(base, { type: "GAIN_BLESSING", choice: "warden", selectedName: "Emberfox" });
+  const warden = runReducer(base, { type: "RESOLVE_EVENT", choice: choices.find(choice => choice.id === "make-root-pact"), selectedName: "Emberfox" });
   assert.equal(warden.lives, 20);
   assert.equal(warden.dewshards, 1);
-  assert.equal(warden.eventBuffs.warden, 1);
+  assert.equal(warden.blessings.warden, 1);
 });
 
 test("wave completion chooses exactly one between recruitment, event, and boss reward", () => {
   const base = createInitialRunState();
   const choices = [critter("emberfox"), critter("bubblefin")];
-  const recruitment = runReducer(base, { type: "FINISH_WAVE", boss: false, recruitChoices: choices });
+  const recruitment = runReducer(base, { type: "FINISH_WAVE", boss: false, recruitChoices: choices, eventId: "moonlit-crossroads" });
   assert.deepEqual(recruitment.recruitChoices, choices);
   assert.equal(recruitment.eventOpen, false);
   assert.equal(recruitment.bossRewardOpen, false);
 
-  const event = runReducer(base, { type: "FINISH_WAVE", boss: false, recruitChoices: [] });
+  const event = runReducer(base, { type: "FINISH_WAVE", boss: false, recruitChoices: [], eventId: "moonlit-crossroads" });
   assert.equal(event.eventOpen, true);
+  assert.equal(event.activeEventId, "moonlit-crossroads");
   assert.equal(event.bossRewardOpen, false);
 
-  const boss = runReducer(base, { type: "FINISH_WAVE", boss: true, recruitChoices: choices });
+  const boss = runReducer(base, { type: "FINISH_WAVE", boss: true, recruitChoices: choices, eventId: "moonlit-crossroads" });
   assert.equal(boss.bossRewardOpen, true);
   assert.equal(boss.eventOpen, false);
   assert.deepEqual(boss.recruitChoices, []);

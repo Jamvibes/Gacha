@@ -1,9 +1,15 @@
 import { BOARD_SIZE, CHAPTERS, CRITTERS, META_SAVE_KEY, RUN_SAVE_KEY, WAVES_PER_CHAPTER, emptyStarterStats, rootCritterId } from "./content.ts";
+import { emptyBlessings } from "./blessings.ts";
+import { EVENT_BY_ID, selectEventForWave } from "./events.ts";
 import { generateChapterPath } from "./map.ts";
-import type { MetaProgress, RestoredRun, RunSave, StarterStats, Tower } from "./types.ts";
+import type { BlessingCounts, MetaProgress, RestoredRun, RunSave, StarterStats, Tower } from "./types.ts";
 
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-export type RunSaveInput = Omit<RunSave, "version" | "savedAt">;
+export type RunSaveInput = Omit<RunSave, "version" | "savedAt" | "eventBuffs" | "blessings" | "activeEventId" | "recentEventIds"> & {
+  blessings: BlessingCounts;
+  activeEventId: string | null;
+  recentEventIds: string[];
+};
 
 const nonNegativeNumber = (value: unknown, fallback = 0) => {
   const number = Number(value);
@@ -63,7 +69,7 @@ export function writeMetaProgress(storage: StorageLike, progress: Omit<MetaProgr
 export function parseRunProgress(raw: string): RestoredRun | null {
   try {
     const data = JSON.parse(raw) as Partial<RunSave>;
-    if (data.version !== 1 && data.version !== 2) return null;
+    if (data.version !== 1 && data.version !== 2 && data.version !== 3) return null;
     const starter = CRITTERS.find(critter => critter.id === data.starterId && critter.starterEligible);
     if (!starter) return null;
 
@@ -91,7 +97,11 @@ export function parseRunProgress(raw: string): RestoredRun | null {
       copies[id] = Math.max(1, count(savedCopies[id]), placed);
       return copies;
     }, {});
-    const eventBuffs = data.eventBuffs;
+    const savedBlessings = data.blessings ?? data.eventBuffs ?? emptyBlessings();
+    const recentEventIds = Array.from(new Set((Array.isArray(data.recentEventIds) ? data.recentEventIds : []).filter((id): id is string => typeof id === "string" && Boolean(EVENT_BY_ID[id])))).slice(-3);
+    const savedActiveEventId = typeof data.activeEventId === "string" && EVENT_BY_ID[data.activeEventId] ? data.activeEventId : null;
+    const migratedEvent = Boolean(data.eventOpen) && !savedActiveEventId ? selectEventForWave({ chapter, wave, seed: mapSeed, recentEventIds }) : null;
+    const activeEventId = Boolean(data.eventOpen) ? savedActiveEventId ?? migratedEvent?.id ?? null : null;
 
     return {
       starterId: starter.id,
@@ -105,14 +115,16 @@ export function parseRunProgress(raw: string): RestoredRun | null {
       towers,
       runUnlocked,
       guardianCopies,
-      eventBuffs: {
-        harvest: count(eventBuffs?.harvest),
-        spring: count(eventBuffs?.spring),
-        warden: count(eventBuffs?.warden),
+      blessings: {
+        harvest: count(savedBlessings.harvest),
+        spring: count(savedBlessings.spring),
+        warden: count(savedBlessings.warden),
       },
+      activeEventId,
+      recentEventIds,
       starCharmCount: count(data.starCharmCount),
       nextWaveNote: typeof data.nextWaveNote === "string" && data.nextWaveNote ? data.nextWaveNote : "No special conditions",
-      eventOpen: Boolean(data.eventOpen),
+      eventOpen: Boolean(data.eventOpen && activeEventId),
       recruitChoices: (Array.isArray(data.recruitChoices) ? data.recruitChoices : []).map(id => CRITTERS.find(critter => critter.id === id)).filter((critter): critter is NonNullable<typeof critter> => Boolean(critter)),
       bossRewardOpen,
       gameSpeed: data.gameSpeed === 2 ? 2 : 1,
@@ -135,7 +147,7 @@ export function readRunProgress(storage: StorageLike): RestoredRun | null {
 }
 
 export function writeRunProgress(storage: StorageLike, input: RunSaveInput, savedAt = Date.now()) {
-  const save: RunSave = { ...input, version: 2, savedAt };
+  const save: RunSave = { ...input, version: 3, savedAt };
   storage.setItem(RUN_SAVE_KEY, JSON.stringify(save));
 }
 

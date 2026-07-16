@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, ENEMY_CODEX, ENEMY_SPRITES, WAVES_PER_CHAPTER, emptyStarterStats, starterBlessing } from "./game/content";
+import { BLESSINGS } from "./game/blessings";
+import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
 import { useRunState } from "./game/use-run-state";
-import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, EventChoice, StarterStats } from "./game/types";
+import type { EventChoiceDefinition } from "./game/events";
+import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, StarterStats } from "./game/types";
 
 const cellStyle = (cell: number) => {
   const point = cellPoint(cell);
@@ -43,9 +46,9 @@ export default function Home() {
   const [combatNumbers, setCombatNumbers] = useState<CombatNumber[]>([]);
   const [stats, setStats] = useState<Record<string, StarterStats>>(emptyStarterStats);
   const {
-    state: { dewshards, lives, wave, chapter, mapSeed, mapVersion, towers, selected, starterId, eventOpen, nextWaveNote, runUnlocked, guardianCopies, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, eventBuffs, starCharmCount },
+    state: { dewshards, lives, wave, chapter, mapSeed, mapVersion, towers, selected, starterId, eventOpen, nextWaveNote, runUnlocked, guardianCopies, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, blessings, activeEventId, recentEventIds, starCharmCount },
     setters: { setDewshards, setLives, setWave, setTowers, setSelected, setGuardianCopies, setGameSpeed, setStarCharmCount },
-    actions: { restoreRun, startRun, recruitRunGuardian, gainRunBlessing, finishRunWave, enterRunChapter, completeRun, resetRun },
+    actions: { restoreRun, startRun, recruitRunGuardian, resolveRunEvent, finishRunWave, enterRunChapter, completeRun, resetRun },
   } = useRunState();
   const enemyId = useRef(1);
   const attackId = useRef(1);
@@ -89,7 +92,7 @@ export default function Home() {
       return;
     }
     if (!running) saveRunState();
-  }, [saveLoaded, starterId, selected, chapter, mapSeed, mapVersion, wave, lives, dewshards, towers, runUnlocked, guardianCopies, eventBuffs, starCharmCount, nextWaveNote, eventOpen, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, running]);
+  }, [saveLoaded, starterId, selected, chapter, mapSeed, mapVersion, wave, lives, dewshards, towers, runUnlocked, guardianCopies, blessings, activeEventId, recentEventIds, starCharmCount, nextWaveNote, eventOpen, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, running]);
 
   useEffect(() => {
     if (!running || paused) return;
@@ -186,27 +189,34 @@ export default function Home() {
   useEffect(() => {
     if (running && spawnQueue.current === 0 && enemies.length === 0) {
       const bossCleared = wave === WAVES_PER_CHAPTER;
-      const reward = bossCleared ? 100 + chapter * 50 + wavePetalBonus.current + eventBuffs.harvest * 5 : 18 + wave * 3 + chapter * 5 + wavePetalBonus.current + eventBuffs.harvest * 5;
+      const reward = bossCleared ? 100 + chapter * 50 + wavePetalBonus.current + blessings.harvest * 5 : 18 + wave * 3 + chapter * 5 + wavePetalBonus.current + blessings.harvest * 5;
       setRunning(false);
       setPetals(p => p + reward);
       setMessage(bossCleared ? `${activeChapter.bossName} was defeated! Choose a relic before the journey continues.` : `Wave ${wave} cleared! Your critters found ${reward} petals.`);
       if (starterId) setStats(current => ({ ...current, [starterId]: { ...current[starterId], wavesCleared: current[starterId].wavesCleared + 1, bossesDefeated: current[starterId].bossesDefeated + (bossCleared ? 1 : 0), highestChapter: Math.max(current[starterId].highestChapter, chapter) } }));
       wavePetalBonus.current = 0;
       let choices: Critter[] = [];
-      if (!bossCleared && wave < WAVES_PER_CHAPTER && [1, 3, 6].includes(wave)) {
+      let eventId: string | null = null;
+      const eventContext = { chapter, wave, seed: mapSeed, recentEventIds };
+      const scheduledEvent = !bossCleared ? selectScheduledEvent(eventContext) : null;
+      if (scheduledEvent) {
+        eventId = scheduledEvent.id;
+      } else if (!bossCleared && wave < WAVES_PER_CHAPTER && [1, 3, 6].includes(wave)) {
         const available = CRITTERS.filter(c => c.tier === 1 && (!c.wishOnly || owned.includes(c.id))).sort((a, b) => Number(runUnlocked.includes(a.id)) - Number(runUnlocked.includes(b.id)));
         const offset = wave === 3 && available.length > 3 ? 1 : 0;
         choices = [...available.slice(offset, offset + 3), ...available.slice(0, offset)].slice(0, 3);
       }
-      finishRunWave(bossCleared, choices);
+      if (!bossCleared && !eventId && !choices.length) eventId = selectPooledEvent(eventContext)?.id ?? null;
+      finishRunWave(bossCleared, choices, eventId);
     }
-  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, eventBuffs.harvest, starterId, owned]);
+  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, blessings.harvest, starterId, owned, mapSeed, recentEventIds]);
 
   useEffect(() => {
     if (lives <= 0) { setRunning(false); spawnQueue.current = 0; setMessage("The gloom reached the Heart Tree. Regroup and try again!"); }
   }, [lives]);
 
   const selectedCritter = CRITTERS.find(c => c.id === selected)!;
+  const activeEvent = activeEventId ? EVENT_BY_ID[activeEventId] : null;
   const ownedCritters = useMemo(() => CRITTERS.filter(c => owned.includes(c.id)), [owned]);
   const runCritters = useMemo(() => CRITTERS.filter(c => runUnlocked.includes(c.id)), [runUnlocked]);
   const remainingCopies = (id: string) => Math.max(0, (guardianCopies[id] || 0) - towers.filter(tower => tower.sourceId === id).length);
@@ -227,9 +237,7 @@ export default function Home() {
         ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), shield: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current * 0.35 * (starterId === "bloomwing" ? 0.75 : 1)), ability: "Barkshield: protected by a shield equal to 35% of its health." }] : []),
       ];
   const activeBuffs = [
-    eventBuffs.harvest ? { icon: "🌸", name: `Moonbloom Covenant ×${eventBuffs.harvest}`, description: `+${eventBuffs.harvest * 5} petals after every wave` } : null,
-    eventBuffs.spring ? { icon: "💧", name: `Echoing Spring ×${eventBuffs.spring}`, description: `${eventBuffs.spring} extra guardian ${eventBuffs.spring === 1 ? "copy" : "copies"} granted` } : null,
-    eventBuffs.warden ? { icon: "🌳", name: `Oath of the Deep Roots ×${eventBuffs.warden}`, description: `+${eventBuffs.warden * 5}% guardian damage` } : null,
+    ...BLESSINGS.map(blessing => blessings[blessing.id] ? { icon: blessing.icon, name: `${blessing.name} ×${blessings[blessing.id]}`, description: blessing.description(blessings[blessing.id]) } : null),
     starCharmCount ? { icon: "⭐", name: `Astral Guardian's Grace ×${starCharmCount}`, description: `+${starCharmCount * 25}% guardian damage` } : null,
   ].filter(Boolean) as { icon: string; name: string; description: string }[];
 
@@ -253,7 +261,9 @@ export default function Home() {
       towers: towers.map(tower => ({ slot: tower.slot, critterId: tower.critter.id, sourceId: tower.sourceId })),
       runUnlocked,
       guardianCopies,
-      eventBuffs,
+      blessings,
+      activeEventId,
+      recentEventIds,
       starCharmCount,
       nextWaveNote,
       eventOpen,
@@ -297,27 +307,19 @@ export default function Home() {
     setPaused(false);
   }
 
-  function chooseEvent(choice: EventChoice) {
-    gainRunBlessing(choice, selectedCritter.name);
-    if (choice === "harvest") {
-      setPetals(p => p + 55);
-      waveHpMultiplier.current = 1.35;
-      waveExtraEnemies.current = 0;
-      wavePetalBonus.current = 25;
-      setMessage("The Moonbloom Covenant blesses this run with 5 extra petals per clear.");
-    } else if (choice === "spring") {
-      waveHpMultiplier.current = 1;
-      waveExtraEnemies.current = 0;
-      wavePetalBonus.current = 0;
-      setMessage(`The Echoing Spring created one additional ${selectedCritter.name} copy for this run.`);
-    } else {
-      addCombatNumber(activePath[activePath.length - 1], 2, "heal");
-      runDamageMultiplier.current *= 1.05;
-      waveHpMultiplier.current = 1;
-      waveExtraEnemies.current = 3;
-      wavePetalBonus.current = 20;
-      setMessage("The Oath of the Deep Roots blesses every guardian with 5% additional damage.");
+  function chooseEvent(choice: EventChoiceDefinition) {
+    resolveRunEvent(choice, selectedCritter.name);
+    for (const effect of choice.effects) {
+      if (effect.type === "petals") setPetals(petals => Math.max(0, petals + effect.amount));
+      if (effect.type === "heal") addCombatNumber(activePath[activePath.length - 1], effect.amount, "heal");
+      if (effect.type === "runDamageMultiplier") runDamageMultiplier.current *= effect.multiplier;
+      if (effect.type === "nextWave") {
+        waveHpMultiplier.current = effect.hpMultiplier;
+        waveExtraEnemies.current = effect.extraEnemies;
+        wavePetalBonus.current = effect.petalBonus;
+      }
     }
+    setMessage(formatEventText(choice.resultMessage, selectedCritter.name));
   }
 
   function chooseBossReward(reward: BossReward) {
@@ -477,15 +479,13 @@ export default function Home() {
             {wave > 0 && !running && <button className="textButton" onClick={resetBattle}>Restart with a new starter</button>}
           </aside>
         </div>
-        {eventOpen && <div className="choiceOverlay eventOverlay" role="dialog" aria-modal="true" aria-labelledby="event-title">
+        {eventOpen && activeEvent && <div className="choiceOverlay eventOverlay" role="dialog" aria-modal="true" aria-labelledby="event-title">
           <section className="choicePanel eventPanel">
-            <span className="eventIcon">🌙</span><span className="eyebrow">BETWEEN THE WAVES</span>
-            <h1 id="event-title">Moonlight at the old crossroads</h1>
-            <p>The forest offers three paths. Every gift has a consequence.</p>
+            <span className="eventIcon">{activeEvent.icon}</span><span className="eyebrow">BETWEEN THE WAVES</span>
+            <h1 id="event-title">{activeEvent.title}</h1>
+            <p>{activeEvent.description}</p>
             <div className="eventChoices">
-              <button onClick={() => chooseEvent("harvest")}><span>🌸</span><div><small>RISKY • 💠 2</small><b>Harvest moonpetals</b><p>Gain 55 petals and 2 Dewshards. Permanently gain +5 petals per wave. The next wave has 35% more health.</p></div></button>
-              <button onClick={() => chooseEvent("spring")}><span>💧</span><div><small>SAFE • 💠 1</small><b>Listen to the echoing spring</b><p>Gain 1 Dewshard and an additional copy of your currently selected guardian for this run.</p></div></button>
-              <button onClick={() => chooseEvent("warden")}><span>🌳</span><div><small>TACTICAL • 💠 1</small><b>Make a root pact</b><p>Heal 2 objective health, gain 1 Dewshard, and permanently grant +5% guardian damage. Face 3 extra enemies next wave.</p></div></button>
+              {activeEvent.choices.map(choice => <button key={choice.id} onClick={() => chooseEvent(choice)}><span>{choice.icon}</span><div><small>{choice.label}</small><b>{choice.title}</b><p>{formatEventText(choice.description, selectedCritter.name)}</p></div></button>)}
             </div>
           </section>
         </div>}

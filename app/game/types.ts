@@ -38,12 +38,12 @@ export type Enemy = {
 };
 
 export type Tower = { slot: number; critter: Critter; cooldown: number; sourceId: string };
-export type EventChoice = "harvest" | "spring" | "warden";
+export type BlessingId = "harvest" | "spring" | "warden";
 export type BossReward = "heartseed" | "embercore" | "starcharm";
 export type AttackFx = { id: number; from: number; to: number; color: string; critterId: string };
 export type CombatNumber = { id: number; cell: number; value: number; kind: "damage" | "heal" };
 export type StarterStats = { runs: number; victories: number; bossesDefeated: number; wavesCleared: number; highestChapter: number };
-export type BlessingCounts = { harvest: number; spring: number; warden: number };
+export type BlessingCounts = Record<BlessingId, number>;
 export type MetaProgress = { version: 1; owned: string[]; petals: number; stats: Record<string, StarterStats> };
 
 export type ChapterConfig = {
@@ -72,7 +72,7 @@ export type EnemyCodexEntry = {
 };
 
 export type RunSave = {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   starterId: string;
   selected: string;
   chapter: number;
@@ -86,7 +86,10 @@ export type RunSave = {
   guardianCopies?: Record<string, number>;
   mapSeed?: number;
   mapVersion?: 1 | 2;
-  eventBuffs: BlessingCounts;
+  blessings?: BlessingCounts;
+  eventBuffs?: BlessingCounts;
+  activeEventId?: string | null;
+  recentEventIds?: string[];
   starCharmCount: number;
   nextWaveNote: string;
   eventOpen: boolean;
@@ -112,7 +115,9 @@ export type RestoredRun = {
   towers: Tower[];
   runUnlocked: string[];
   guardianCopies: Record<string, number>;
-  eventBuffs: BlessingCounts;
+  blessings: BlessingCounts;
+  activeEventId: string | null;
+  recentEventIds: string[];
   starCharmCount: number;
   nextWaveNote: string;
   eventOpen: boolean;

@@ -1,4 +1,7 @@
-import type { BlessingCounts, Critter, EventChoice, RestoredRun, Tower } from "./types.ts";
+import { emptyBlessings } from "./blessings.ts";
+import { formatEventText } from "./events.ts";
+import type { EventChoiceDefinition } from "./events.ts";
+import type { BlessingCounts, Critter, RestoredRun, Tower } from "./types.ts";
 
 export type RunState = {
   dewshards: number;
@@ -18,7 +21,9 @@ export type RunState = {
   bossRewardOpen: boolean;
   adventureComplete: boolean;
   gameSpeed: 1 | 2;
-  eventBuffs: BlessingCounts;
+  blessings: BlessingCounts;
+  activeEventId: string | null;
+  recentEventIds: string[];
   starCharmCount: number;
 };
 
@@ -40,7 +45,9 @@ export const createInitialRunState = (): RunState => ({
   bossRewardOpen: false,
   adventureComplete: false,
   gameSpeed: 1,
-  eventBuffs: { harvest: 0, spring: 0, warden: 0 },
+  blessings: emptyBlessings(),
+  activeEventId: null,
+  recentEventIds: [],
   starCharmCount: 0,
 });
 
@@ -49,8 +56,8 @@ export type RunAction =
   | { type: "RESTORE_RUN"; restored: RestoredRun }
   | { type: "START_RUN"; starterId: string; mapSeed: number }
   | { type: "RECRUIT_GUARDIAN"; critter: Critter }
-  | { type: "GAIN_BLESSING"; choice: EventChoice; selectedName: string }
-  | { type: "FINISH_WAVE"; boss: boolean; recruitChoices: Critter[] }
+  | { type: "RESOLVE_EVENT"; choice: EventChoiceDefinition; selectedName: string }
+  | { type: "FINISH_WAVE"; boss: boolean; recruitChoices: Critter[]; eventId: string | null }
   | { type: "ENTER_CHAPTER"; chapter: number }
   | { type: "COMPLETE_ADVENTURE" }
   | { type: "RESET_RUN" };
@@ -82,7 +89,9 @@ export function runReducer(state: RunState, action: RunAction): RunState {
       recruitChoices: restored.recruitChoices,
       bossRewardOpen: restored.bossRewardOpen,
       gameSpeed: restored.gameSpeed,
-      eventBuffs: restored.eventBuffs,
+      blessings: restored.blessings,
+      activeEventId: restored.activeEventId,
+      recentEventIds: restored.recentEventIds,
       starCharmCount: restored.starCharmCount,
     };
   }
@@ -111,35 +120,23 @@ export function runReducer(state: RunState, action: RunAction): RunState {
     };
   }
 
-  if (action.type === "GAIN_BLESSING") {
-    const eventBuffs = { ...state.eventBuffs, [action.choice]: state.eventBuffs[action.choice] + 1 };
-    if (action.choice === "harvest") {
-      return { ...state, dewshards: state.dewshards + 2, eventBuffs, eventOpen: false, nextWaveNote: "Gloomblessing: enemies have 35% more health • +25 clear reward" };
+  if (action.type === "RESOLVE_EVENT") {
+    const recentEventIds = state.activeEventId ? [...state.recentEventIds, state.activeEventId].slice(-3) : state.recentEventIds;
+    let next = { ...state, eventOpen: false, activeEventId: null, recentEventIds };
+    for (const effect of action.choice.effects) {
+      if (effect.type === "dewshards") next = { ...next, dewshards: next.dewshards + effect.amount };
+      if (effect.type === "guardianCopy") next = { ...next, guardianCopies: { ...next.guardianCopies, [next.selected]: (next.guardianCopies[next.selected] || 0) + effect.amount } };
+      if (effect.type === "heal") next = { ...next, lives: Math.min(20, next.lives + effect.amount) };
+      if (effect.type === "blessing") next = { ...next, blessings: { ...next.blessings, [effect.blessingId]: next.blessings[effect.blessingId] + effect.amount } };
+      if (effect.type === "nextWave") next = { ...next, nextWaveNote: formatEventText(effect.note, action.selectedName) };
     }
-    if (action.choice === "spring") {
-      return {
-        ...state,
-        dewshards: state.dewshards + 1,
-        guardianCopies: { ...state.guardianCopies, [state.selected]: (state.guardianCopies[state.selected] || 0) + 1 },
-        eventBuffs,
-        eventOpen: false,
-        nextWaveNote: `${action.selectedName}'s echo: +1 placeable copy • normal enemy strength`,
-      };
-    }
-    return {
-      ...state,
-      lives: Math.min(20, state.lives + 2),
-      dewshards: state.dewshards + 1,
-      eventBuffs,
-      eventOpen: false,
-      nextWaveNote: "Root pact: +2 Heart Tree health • 3 extra enemies • +20 clear reward",
-    };
+    return next;
   }
 
   if (action.type === "FINISH_WAVE") {
-    if (action.boss) return { ...state, bossRewardOpen: true, eventOpen: false, recruitChoices: [] };
-    if (action.recruitChoices.length) return { ...state, bossRewardOpen: false, eventOpen: false, recruitChoices: action.recruitChoices };
-    return { ...state, bossRewardOpen: false, eventOpen: true, recruitChoices: [] };
+    if (action.boss) return { ...state, bossRewardOpen: true, eventOpen: false, activeEventId: null, recruitChoices: [] };
+    if (action.recruitChoices.length) return { ...state, bossRewardOpen: false, eventOpen: false, activeEventId: null, recruitChoices: action.recruitChoices };
+    return { ...state, bossRewardOpen: false, eventOpen: Boolean(action.eventId), activeEventId: action.eventId, recruitChoices: [] };
   }
 
   if (action.type === "ENTER_CHAPTER") {
@@ -149,12 +146,13 @@ export function runReducer(state: RunState, action: RunAction): RunState {
       wave: 0,
       towers: [],
       eventOpen: false,
+      activeEventId: null,
       recruitChoices: [],
       bossRewardOpen: false,
       nextWaveNote: "A new region awaits",
     };
   }
 
-  if (action.type === "COMPLETE_ADVENTURE") return { ...state, bossRewardOpen: false, adventureComplete: true };
+  if (action.type === "COMPLETE_ADVENTURE") return { ...state, bossRewardOpen: false, eventOpen: false, activeEventId: null, adventureComplete: true };
   return createInitialRunState();
 }
