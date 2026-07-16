@@ -28,6 +28,7 @@ test("critter catalogue has stable ids and valid evolution links", () => {
     const parent = CRITTERS.find(option => option.id === critter.upgradeOf);
     assert.ok(parent, `${critter.id} must reference an existing evolution parent`);
     assert.equal(critter.tier, parent.tier + 1, `${critter.id} must be exactly one tier above its parent`);
+    assert.equal(critter.faction, parent.faction, `${critter.id} must remain in its evolution family's faction`);
   }
 });
 

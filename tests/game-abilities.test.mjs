@@ -2,11 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, calculateHitDamage, pushBackDistance, rollCritical, selectAbilityHits } from "../app/game/abilities.ts";
 import { CRITTERS } from "../app/game/content.ts";
+import { FACTION_BY_ID, FACTIONS } from "../app/game/factions.ts";
 
 const enemy = (id, step, boss = false) => ({ id, step, hp: 100, maxHp: 100, shield: 0, maxShield: 0, kind: "Gloomling", icon: "", boss });
 
 test("every current guardian family uses one of the six core abilities", () => {
   assert.deepEqual(new Set(CRITTERS.map(critter => critter.ability)), new Set(["burn", "splash", "lightning", "piercing", "slow", "push"]));
+});
+
+test("current faction families share their signature ability", () => {
+  assert.equal(FACTIONS.length, 6);
+  for (const critter of CRITTERS) assert.equal(critter.ability, FACTION_BY_ID[critter.faction].signatureAbility);
+  assert.equal(CRITTERS.find(critter => critter.id === "bloomwing").faction, "cloudkin");
+  assert.equal(CRITTERS.find(critter => critter.id === "bloomwing").ability, "push");
+  assert.equal(CRITTERS.find(critter => critter.id === "moonowl").faction, "starborn");
+  assert.equal(CRITTERS.find(critter => critter.id === "moonowl").ability, "piercing");
 });
 
 test("splash measures physical tile distance around the primary target", () => {
