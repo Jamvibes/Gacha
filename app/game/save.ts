@@ -5,10 +5,11 @@ import { generateChapterPath } from "./map.ts";
 import type { BlessingCounts, MetaProgress, RestoredRun, RunSave, StarterStats, Tower } from "./types.ts";
 
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-export type RunSaveInput = Omit<RunSave, "version" | "savedAt" | "eventBuffs" | "blessings" | "activeEventId" | "recentEventIds" | "guardianForms"> & {
+export type RunSaveInput = Omit<RunSave, "version" | "savedAt" | "eventBuffs" | "blessings" | "activeEventId" | "recentEventIds" | "resolvedEventIds" | "guardianForms"> & {
   blessings: BlessingCounts;
   activeEventId: string | null;
   recentEventIds: string[];
+  resolvedEventIds: string[];
   guardianForms: Record<string, number>;
 };
 
@@ -70,7 +71,7 @@ export function writeMetaProgress(storage: StorageLike, progress: Omit<MetaProgr
 export function parseRunProgress(raw: string): RestoredRun | null {
   try {
     const data = JSON.parse(raw) as Partial<RunSave>;
-    if (data.version !== 1 && data.version !== 2 && data.version !== 3 && data.version !== 4) return null;
+    if (data.version !== 1 && data.version !== 2 && data.version !== 3 && data.version !== 4 && data.version !== 5) return null;
     const starter = CRITTERS.find(critter => critter.id === data.starterId && critter.starterEligible);
     if (!starter) return null;
 
@@ -82,6 +83,9 @@ export function parseRunProgress(raw: string): RestoredRun | null {
     const runUnlocked = Array.from(new Set([starter.id, ...(Array.isArray(data.runUnlocked) ? data.runUnlocked : [])]
       .filter((id): id is string => typeof id === "string" && CRITTERS.some(critter => critter.id === id))
       .map(rootCritterId)));
+    const savedAid = data.aidMission && typeof data.aidMission === "object" ? data.aidMission : null;
+    const aidGuardian = savedAid ? CRITTERS.find(critter => critter.id === savedAid.guardianId && runUnlocked.includes(rootCritterId(critter.id))) : null;
+    const aidMission = aidGuardian ? { guardianId: aidGuardian.id, wavesRemaining: Math.min(2, count(savedAid?.wavesRemaining)) } : null;
     const path = generateChapterPath(mapSeed, chapter, mapVersion);
     const savedTowers = Array.isArray(data.towers) ? data.towers : [];
     const towers = savedTowers.map(tower => {
@@ -96,7 +100,8 @@ export function parseRunProgress(raw: string): RestoredRun | null {
     const savedCopies = data.guardianCopies && typeof data.guardianCopies === "object" ? data.guardianCopies : {};
     const guardianCopies = runUnlocked.reduce<Record<string, number>>((copies, id) => {
       const placed = towers.filter(tower => tower.sourceId === id).length;
-      copies[id] = Math.max(1, count(savedCopies[id]), placed);
+      const minimum = aidMission && rootCritterId(aidMission.guardianId) === id ? 0 : 1;
+      copies[id] = Math.max(minimum, count(savedCopies[id]), placed);
       return copies;
     }, {});
     const savedForms = data.guardianForms && typeof data.guardianForms === "object" ? data.guardianForms : {};
@@ -115,7 +120,8 @@ export function parseRunProgress(raw: string): RestoredRun | null {
       const formTotal = CRITTERS
         .filter(critter => rootCritterId(critter.id) === familyId)
         .reduce((total, critter) => total + (guardianForms[critter.id] || 0), 0);
-      const familyTotal = Math.max(guardianCopies[familyId], formTotal, 1);
+      const minimum = aidMission && rootCritterId(aidMission.guardianId) === familyId ? 0 : 1;
+      const familyTotal = Math.max(guardianCopies[familyId], formTotal, minimum);
       if (formTotal < familyTotal) guardianForms[familyId] = (guardianForms[familyId] || 0) + familyTotal - formTotal;
       guardianCopies[familyId] = familyTotal;
     }
@@ -124,9 +130,12 @@ export function parseRunProgress(raw: string): RestoredRun | null {
       : CRITTERS.find(critter => (guardianForms[critter.id] || 0) > 0)?.id ?? starter.id;
     const savedBlessings = data.blessings ?? data.eventBuffs ?? emptyBlessings();
     const recentEventIds = Array.from(new Set((Array.isArray(data.recentEventIds) ? data.recentEventIds : []).filter((id): id is string => typeof id === "string" && Boolean(EVENT_BY_ID[id])))).slice(-3);
+    const resolvedEventIds = Array.from(new Set((Array.isArray(data.resolvedEventIds) ? data.resolvedEventIds : []).filter((id): id is string => typeof id === "string" && Boolean(EVENT_BY_ID[id]))));
     const savedActiveEventId = typeof data.activeEventId === "string" && EVENT_BY_ID[data.activeEventId] ? data.activeEventId : null;
-    const migratedEvent = Boolean(data.eventOpen) && !savedActiveEventId ? selectEventForWave({ chapter, wave, seed: mapSeed, recentEventIds }) : null;
+    const unplacedGuardianIds = CRITTERS.filter(critter => (guardianForms[critter.id] || 0) > towers.filter(tower => tower.critter.id === critter.id).length).map(critter => critter.id);
+    const migratedEvent = Boolean(data.eventOpen) && !savedActiveEventId ? selectEventForWave({ chapter, wave, seed: mapSeed, recentEventIds, resolvedEventIds, unplacedGuardianIds }) : null;
     const activeEventId = Boolean(data.eventOpen) ? savedActiveEventId ?? migratedEvent?.id ?? null : null;
+    const queuedEventId = data.queuedEventId === "aid-answered" && aidMission ? data.queuedEventId : null;
 
     return {
       starterId: starter.id,
@@ -147,6 +156,11 @@ export function parseRunProgress(raw: string): RestoredRun | null {
       },
       activeEventId,
       recentEventIds,
+      resolvedEventIds,
+      aidMission,
+      queuedEventId,
+      completeAfterEvent: Boolean(data.completeAfterEvent && activeEventId === "aid-answered"),
+      waveDamageMultiplier: positiveNumber(data.waveDamageMultiplier),
       starCharmCount: count(data.starCharmCount),
       nextWaveNote: typeof data.nextWaveNote === "string" && data.nextWaveNote ? data.nextWaveNote : "No special conditions",
       eventOpen: Boolean(data.eventOpen && activeEventId),
@@ -172,7 +186,7 @@ export function readRunProgress(storage: StorageLike): RestoredRun | null {
 }
 
 export function writeRunProgress(storage: StorageLike, input: RunSaveInput, savedAt = Date.now()) {
-  const save: RunSave = { ...input, version: 4, savedAt };
+  const save: RunSave = { ...input, version: 5, savedAt };
   storage.setItem(RUN_SAVE_KEY, JSON.stringify(save));
 }
 

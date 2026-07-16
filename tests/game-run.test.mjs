@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { CRITTERS } from "../app/game/content.ts";
-import { EVENT_BY_ID } from "../app/game/events.ts";
+import { EVENT_BY_ID, choicesForEvent } from "../app/game/events.ts";
 import { createInitialRunState, runReducer } from "../app/game/run.ts";
 
 const critter = id => CRITTERS.find(option => option.id === id);
@@ -129,4 +129,70 @@ test("roster copy rewards duplicate each family's highest current form", () => {
   const rewarded = runReducer(state, { type: "GRANT_ROSTER_COPIES" });
   assert.deepEqual(rewarded.guardianCopies, { emberfox: 3, bubblefin: 2 });
   assert.deepEqual(rewarded.guardianForms, { emberfox: 1, cinderpup: 2, bubblefin: 2 });
+});
+
+test("sending a guardian removes one unplaced form for two completed waves", () => {
+  const base = {
+    ...createInitialRunState(),
+    selected: "cinderpup",
+    runUnlocked: ["emberfox"],
+    guardianCopies: { emberfox: 2 },
+    guardianForms: { emberfox: 1, cinderpup: 1 },
+    towers: [{ slot: 2, critter: critter("emberfox"), cooldown: 0, sourceId: "emberfox" }],
+    eventOpen: true,
+    activeEventId: "call-for-aid",
+  };
+  const send = choicesForEvent(EVENT_BY_ID["call-for-aid"], [critter("cinderpup")])[0];
+  const away = runReducer(base, { type: "RESOLVE_EVENT", choice: send, selectedName: "Cinderpup" });
+  assert.equal(away.guardianForms.cinderpup, 0);
+  assert.equal(away.guardianCopies.emberfox, 1);
+  assert.deepEqual(away.aidMission, { guardianId: "cinderpup", wavesRemaining: 2 });
+  assert.ok(away.resolvedEventIds.includes("call-for-aid"));
+
+  const afterOne = runReducer(away, { type: "FINISH_WAVE", boss: false, recruitChoices: [], eventId: null });
+  assert.equal(afterOne.aidMission.wavesRemaining, 1);
+  assert.equal(afterOne.eventOpen, false);
+  const afterTwo = runReducer(afterOne, { type: "FINISH_WAVE", boss: false, recruitChoices: [], eventId: "moonlit-crossroads" });
+  assert.equal(afterTwo.aidMission.wavesRemaining, 0);
+  assert.equal(afterTwo.activeEventId, "aid-answered");
+});
+
+test("answered aid returns the messenger and grants the selected Tier 2 reward", () => {
+  const base = {
+    ...createInitialRunState(),
+    runUnlocked: ["emberfox"],
+    guardianCopies: { emberfox: 0 },
+    guardianForms: { cinderpup: 0 },
+    aidMission: { guardianId: "cinderpup", wavesRemaining: 0 },
+    eventOpen: true,
+    activeEventId: "aid-answered",
+  };
+  const choice = EVENT_BY_ID["aid-answered"].choices[0];
+  const rewarded = runReducer(base, { type: "RESOLVE_EVENT", choice, selectedName: "Cinderpup", rewardGuardianId: "ripplefin" });
+  assert.equal(rewarded.aidMission, null);
+  assert.equal(rewarded.guardianForms.cinderpup, 1);
+  assert.equal(rewarded.guardianForms.ripplefin, 1);
+  assert.equal(rewarded.guardianCopies.emberfox, 1);
+  assert.equal(rewarded.guardianCopies.bubblefin, 1);
+  assert.ok(rewarded.runUnlocked.includes("bubblefin"));
+});
+
+test("declining aid grants one Dewshard and damage for exactly the next wave", () => {
+  const choice = EVENT_BY_ID["call-for-aid"].choices.find(option => option.id === "cannot-spare-anyone");
+  const rewarded = runReducer({ ...createInitialRunState(), eventOpen: true, activeEventId: "call-for-aid" }, { type: "RESOLVE_EVENT", choice, selectedName: "Emberfox" });
+  assert.equal(rewarded.dewshards, 1);
+  assert.equal(rewarded.waveDamageMultiplier, 1.1);
+  assert.deepEqual(rewarded.blessings, { harvest: 0, warden: 0 });
+  const cleared = runReducer(rewarded, { type: "FINISH_WAVE", boss: false, recruitChoices: [], eventId: null });
+  assert.equal(cleared.waveDamageMultiplier, 1);
+});
+
+test("aid follow-ups wait behind recruitment and then open", () => {
+  const base = { ...createInitialRunState(), aidMission: { guardianId: "emberfox", wavesRemaining: 1 } };
+  const recruitment = runReducer(base, { type: "FINISH_WAVE", boss: false, recruitChoices: [critter("bubblefin")], eventId: null });
+  assert.equal(recruitment.queuedEventId, "aid-answered");
+  assert.equal(recruitment.eventOpen, false);
+  const recruited = runReducer(recruitment, { type: "RECRUIT_GUARDIAN", critter: critter("bubblefin") });
+  assert.equal(recruited.activeEventId, "aid-answered");
+  assert.equal(recruited.eventOpen, true);
 });

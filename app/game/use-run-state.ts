@@ -41,7 +41,7 @@ export function useRunState() {
     recruitRunGuardian: (critter: Critter) => dispatch({ type: "RECRUIT_GUARDIAN", critter }),
     evolveRunGuardian: (slot: number, evolution: Critter) => dispatch({ type: "EVOLVE_GUARDIAN", slot, evolution }),
     grantRosterCopies: () => dispatch({ type: "GRANT_ROSTER_COPIES" }),
-    resolveRunEvent: (choice: EventChoiceDefinition, selectedName: string) => dispatch({ type: "RESOLVE_EVENT", choice, selectedName }),
+    resolveRunEvent: (choice: EventChoiceDefinition, selectedName: string, rewardGuardianId?: string) => dispatch({ type: "RESOLVE_EVENT", choice, selectedName, rewardGuardianId }),
     finishRunWave: (boss: boolean, recruitChoices: Critter[] = [], eventId: string | null = null) => dispatch({ type: "FINISH_WAVE", boss, recruitChoices, eventId }),
     enterRunChapter: (chapter: number) => dispatch({ type: "ENTER_CHAPTER", chapter }),
     completeRun: () => dispatch({ type: "COMPLETE_ADVENTURE" }),
