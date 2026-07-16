@@ -5,6 +5,7 @@ import { BOARD_SIZE, CHAPTERS, CRITTERS, ENEMY_CODEX, ENEMY_SPRITES, WAVES_PER_C
 import { BLESSINGS } from "./game/blessings";
 import { BASE_CRITICAL_CHANCE, calculateHitDamage, pushBackDistance, rollCritical, selectAbilityHits } from "./game/abilities";
 import { EVENT_BY_ID, formatEventText, selectPooledEvent, selectScheduledEvent } from "./game/events";
+import { FACTION_BY_ID, FACTIONS } from "./game/factions";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
 import { useRunState } from "./game/use-run-state";
@@ -104,7 +105,7 @@ export default function Home() {
         const boss = wave === WAVES_PER_CHAPTER && spawnQueue.current === 1;
         const tough = !boss && difficultyWave >= 3 && spawnQueue.current % 4 === 0;
         const hp = Math.round((boss ? 1200 + chapter * 800 : 58 + difficultyWave * 18 + (tough ? 55 : 0)) * waveHpMultiplier.current);
-        const shield = Math.round(hp * (boss ? 0.2 : tough ? 0.35 : 0) * (starterId === "bloomwing" ? 0.75 : 1));
+        const shield = Math.round(hp * (boss ? 0.2 : tough ? 0.35 : 0) * (starterId === "moonowl" ? 0.75 : 1));
         setEnemies(es => [...es, { id: enemyId.current++, step: 0, hp, maxHp: hp, shield, maxShield: shield, kind: boss ? activeChapter.bossName : tough ? "Bramble Brute" : "Gloomling", icon: boss ? activeChapter.bossIcon : tough ? "👹" : "👾", boss }]);
         spawnQueue.current--;
         spawnTimer.current = 4;
@@ -132,7 +133,7 @@ export default function Home() {
             const targetCell = activePath[Math.floor(e.step)];
             const columnGap = targetCell % BOARD_SIZE - slotCell % BOARD_SIZE;
             const rowGap = Math.floor(targetCell / BOARD_SIZE) - Math.floor(slotCell / BOARD_SIZE);
-            const effectiveRange = t.critter.range + (starterId === "moonowl" ? 1 : 0);
+            const effectiveRange = t.critter.range + (starterId === "bloomwing" ? 1 : 0);
             return Math.hypot(columnGap, rowGap) <= effectiveRange + 0.65;
           })());
           const sortedTargets = targets.sort((a,b) => b.step - a.step);
@@ -225,10 +226,10 @@ export default function Home() {
   const upcomingBrutes = upcomingWave === WAVES_PER_CHAPTER || upcomingDifficulty < 3 ? 0 : Array.from({ length: upcomingCount }, (_, index) => upcomingCount - index).filter(queue => queue % 4 === 0).length;
   const upcomingNormalHp = Math.round((58 + upcomingDifficulty * 18) * waveHpMultiplier.current);
   const upcomingEnemyIntel = upcomingWave === WAVES_PER_CHAPTER
-    ? [{ icon: activeChapter.bossIcon, name: activeChapter.bossName, count: 1, hp: Math.round((1200 + chapter * 800) * waveHpMultiplier.current), shield: Math.round((1200 + chapter * 800) * waveHpMultiplier.current * 0.2 * (starterId === "bloomwing" ? 0.75 : 1)), ability: "Royal Ward: colossal health protected by a 20% shield." }]
+    ? [{ icon: activeChapter.bossIcon, name: activeChapter.bossName, count: 1, hp: Math.round((1200 + chapter * 800) * waveHpMultiplier.current), shield: Math.round((1200 + chapter * 800) * waveHpMultiplier.current * 0.2 * (starterId === "moonowl" ? 0.75 : 1)), ability: "Royal Ward: colossal health protected by a 20% shield." }]
     : [
         { icon: "👾", name: "Gloomling", count: upcomingCount - upcomingBrutes, hp: upcomingNormalHp, shield: 0, ability: "Skitter: steady movement with no armour." },
-        ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), shield: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current * 0.35 * (starterId === "bloomwing" ? 0.75 : 1)), ability: "Barkshield: protected by a shield equal to 35% of its health." }] : []),
+        ...(upcomingBrutes ? [{ icon: "👹", name: "Bramble Brute", count: upcomingBrutes, hp: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current), shield: Math.round((58 + upcomingDifficulty * 18 + 55) * waveHpMultiplier.current * 0.35 * (starterId === "moonowl" ? 0.75 : 1)), ability: "Barkshield: protected by a shield equal to 35% of its health." }] : []),
       ];
   const activeBuffs = [
     ...BLESSINGS.map(blessing => blessings[blessing.id] ? { icon: blessing.icon, name: `${blessing.name} ×${blessings[blessing.id]}`, description: blessing.description(blessings[blessing.id]) } : null),
@@ -418,7 +419,7 @@ export default function Home() {
           <div className="starterChoices">
             {starterChoices.map(c => <button key={c.id} onClick={() => chooseStarter(c.id)} style={{"--accent": c.color} as React.CSSProperties}>
               <span className="starterPortrait"><CritterArt critter={c}/></span>
-              <small>{c.title}</small><b>{c.name}</b>
+              <small>{FACTION_BY_ID[c.faction].icon} {FACTION_BY_ID[c.faction].name} • {c.title}</small><b>{c.name}</b>
               <em>{starterBlessing(c.id)}</em>
               <strong>Choose {c.name}</strong>
             </button>)}
@@ -512,10 +513,10 @@ export default function Home() {
             <button className="closeInfo" onClick={closeTowerInfo} aria-label="Close tower information">×</button>
             <span className="towerInfoPortrait"><CritterArt critter={inspectedTower.critter}/></span><span className="eyebrow">PLACED GUARDIAN • {inspectedTower.critter.rarity} • TIER {inspectedTower.critter.tier}</span>
             <h1 id="tower-info-title">{inspectedTower.critter.name}</h1>
-            <p>{inspectedTower.critter.title}</p>
+            <p>{FACTION_BY_ID[inspectedTower.critter.faction].icon} {FACTION_BY_ID[inspectedTower.critter.faction].name} • {inspectedTower.critter.title}</p>
             <div className="towerStatsGrid">
               <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * (starterId === "mossback" ? 1.15 : 1) * runDamageMultiplier.current)}</b></span>
-              <span><small>RANGE</small><b>{inspectedTower.critter.range + (starterId === "moonowl" ? 1 : 0)} tiles</b></span>
+              <span><small>RANGE</small><b>{inspectedTower.critter.range + (starterId === "bloomwing" ? 1 : 0)} tiles</b></span>
               <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - (starterId === "sparkit" ? 1 : 0)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
               <span><small>CRITICAL CHANCE</small><b>{Math.round(BASE_CRITICAL_CHANCE * 100)}% • ×2 damage</b></span>
             </div>
@@ -541,6 +542,7 @@ export default function Home() {
 
       {tab === "collection" && <section className="bookPage">
         <div className="pageHeading"><span className="eyebrow">YOUR LIVING COLLECTION</span><h1>The Critterbook</h1><p>Every friendship adds a new leaf to the Heart Tree.</p></div>
+        <div className="factionGuide">{FACTIONS.map(faction => <article key={faction.id}><span>{faction.icon}</span><div><b>{faction.name}</b><small>{faction.aesthetic}</small><em>Signature: {faction.signatureAbility}</em></div></article>)}</div>
         <div className="evolutionGuide"><span><b>Tier 1</b> Base forms and starting guardians</span><i>→ 💠 1</i><span><b>Tier 2</b> Evolved forms with stronger abilities</span><i>→ 💠 2</i><span><b>Tier 3</b> Final core evolutions</span><em>Place a guardian, select it, and spend Dewshards to evolve it during that run. Epic sidegrade paths will arrive later.</em></div>
         <div className="progressCard"><div><span>✿</span><b>{owned.length} of {CRITTERS.length} discovered</b></div><div className="progress"><i style={{width:`${owned.length/CRITTERS.length*100}%`}}/></div></div>
         <div className="cards">{CRITTERS.map((c, i) => { const unlocked = owned.includes(c.id); const baseCritter = c.upgradeOf ? CRITTERS.find(base => base.id === c.upgradeOf) : null; return <article key={c.id} className={!unlocked ? "locked" : ""} style={{"--accent": c.color} as React.CSSProperties}>

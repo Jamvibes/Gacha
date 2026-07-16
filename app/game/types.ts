@@ -1,4 +1,5 @@
 export type AbilityId = "burn" | "splash" | "slow" | "lightning" | "piercing" | "push";
+export type FactionId = "emberkin" | "tidekin" | "rootbound" | "stormborn" | "cloudkin" | "starborn";
 
 export type Critter = {
   id: string;
@@ -13,6 +14,7 @@ export type Critter = {
   rarity: "Common" | "Rare" | "Epic" | "Legendary";
   skill: string;
   ability: AbilityId;
+  faction: FactionId;
   tier: 1 | 2 | 3;
   starterEligible?: boolean;
   wishOnly?: boolean;
