@@ -53,6 +53,21 @@ test("lightning loses damage with every chain", () => {
   assert.ok(hits[2].multiplier < hits[1].multiplier);
 });
 
+test("starter modifiers strengthen only splash and chained hits", () => {
+  const path = [0, 1, 2, 10, 9, 8];
+  const primary = enemy(1, 2);
+  const nearby = enemy(2, 3);
+  const splashHits = selectAbilityHits("splash", 1, [primary, nearby], [primary], primary, path, 0, { splashDamageMultiplier: 1.1 });
+  assert.equal(splashHits[0].multiplier, 1);
+  assert.equal(splashHits[1].multiplier, 0.65 * 1.1);
+
+  const chainTargets = [enemy(3, 5), enemy(4, 4), enemy(5, 3)];
+  const normalChain = selectAbilityHits("lightning", 1, chainTargets, chainTargets, chainTargets[0], path);
+  const boostedChain = selectAbilityHits("lightning", 1, chainTargets, chainTargets, chainTargets[0], path, 0, { chainDamageMultiplier: 1.1 });
+  assert.equal(boostedChain[0].multiplier, 1);
+  assert.equal(boostedChain[1].multiplier, normalChain[1].multiplier * 1.1);
+});
+
 test("Tidekin and Stormborn bonds expand splash and lightning", () => {
   const path = [0, 1, 2, 3, 4, 5];
   const primary = enemy(1, 0);
@@ -70,6 +85,7 @@ test("Emberkin and Rootbound bonds strengthen their status effects", () => {
   assert.equal(burnEffect(100, 1, 2).spreadMultiplier, 0.5);
   assert.equal(slowEffect(1, 1).factor, 0.55);
   assert.equal(slowEffect(1, 2).factor, 0.65);
+  assert.equal(slowEffect(1, 0, 1.2).ticks, 4.8);
   const path = [0, 1, 2, 3];
   assert.equal(selectBurnSpreadTarget([enemy(1, 1), enemy(2, 2)], enemy(1, 1), path)?.id, 2);
 });
@@ -82,6 +98,7 @@ test("critical hits use the shared chance and damage multiplier", () => {
   assert.equal(criticalChanceBonus(2), 0.1);
   assert.equal(rollCritical(() => 0.19, criticalChanceBonus(2)), true);
   assert.equal(calculateHitDamage(20, 0.65, true), 26);
+  assert.equal(calculateHitDamage(20, 1, true, 1, 2.5), 50);
 });
 
 test("push grows with tier and bosses resist half of it", () => {
