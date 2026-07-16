@@ -42,7 +42,7 @@ function normalizeStats(value: unknown): Record<string, StarterStats> {
 }
 
 export function defaultMetaProgress(): MetaProgress {
-  return { version: 1, owned: [], petals: 240, stats: emptyStarterStats() };
+  return { version: 2, owned: [], petals: 240, stats: emptyStarterStats(), endlessHighWave: 0 };
 }
 
 export function readMetaProgress(storage: StorageLike): MetaProgress {
@@ -54,10 +54,11 @@ export function readMetaProgress(storage: StorageLike): MetaProgress {
       ? Array.from(new Set(data.owned.filter((id): id is string => typeof id === "string" && CRITTERS.some(critter => critter.id === id))))
       : [];
     return {
-      version: 1,
+      version: 2,
       owned,
       petals: nonNegativeNumber(data.petals, 240),
       stats: normalizeStats(data.stats),
+      endlessHighWave: count(data.endlessHighWave),
     };
   } catch {
     return defaultMetaProgress();
@@ -65,13 +66,13 @@ export function readMetaProgress(storage: StorageLike): MetaProgress {
 }
 
 export function writeMetaProgress(storage: StorageLike, progress: Omit<MetaProgress, "version">) {
-  storage.setItem(META_SAVE_KEY, JSON.stringify({ version: 1, ...progress } satisfies MetaProgress));
+  storage.setItem(META_SAVE_KEY, JSON.stringify({ version: 2, ...progress } satisfies MetaProgress));
 }
 
 export function parseRunProgress(raw: string): RestoredRun | null {
   try {
     const data = JSON.parse(raw) as Partial<RunSave>;
-    if (data.version !== 1 && data.version !== 2 && data.version !== 3 && data.version !== 4 && data.version !== 5) return null;
+    if (data.version !== 1 && data.version !== 2 && data.version !== 3 && data.version !== 4 && data.version !== 5 && data.version !== 6) return null;
     const starter = CRITTERS.find(critter => critter.id === data.starterId && critter.starterEligible);
     if (!starter) return null;
 
@@ -79,7 +80,8 @@ export function parseRunProgress(raw: string): RestoredRun | null {
     const mapSeed = count(data.mapSeed);
     const mapVersion: 1 | 2 = data.mapVersion === 2 ? 2 : 1;
     const bossRewardOpen = Boolean(data.bossRewardOpen);
-    const wave = Math.min(bossRewardOpen ? WAVES_PER_CHAPTER : WAVES_PER_CHAPTER - 1, count(data.wave));
+    const gameMode = data.gameMode === "endless" ? "endless" : "campaign";
+    const wave = gameMode === "endless" ? Math.min(999999, count(data.wave)) : Math.min(bossRewardOpen ? WAVES_PER_CHAPTER : WAVES_PER_CHAPTER - 1, count(data.wave));
     const runUnlocked = Array.from(new Set([starter.id, ...(Array.isArray(data.runUnlocked) ? data.runUnlocked : [])]
       .filter((id): id is string => typeof id === "string" && CRITTERS.some(critter => critter.id === id))
       .map(rootCritterId)));
@@ -138,6 +140,7 @@ export function parseRunProgress(raw: string): RestoredRun | null {
     const queuedEventId = data.queuedEventId === "aid-answered" && aidMission ? data.queuedEventId : null;
 
     return {
+      gameMode,
       starterId: starter.id,
       selected: selectedForm,
       chapter,
@@ -186,7 +189,7 @@ export function readRunProgress(storage: StorageLike): RestoredRun | null {
 }
 
 export function writeRunProgress(storage: StorageLike, input: RunSaveInput, savedAt = Date.now()) {
-  const save: RunSave = { ...input, version: 5, savedAt };
+  const save: RunSave = { ...input, version: 6, savedAt };
   storage.setItem(RUN_SAVE_KEY, JSON.stringify(save));
 }
 

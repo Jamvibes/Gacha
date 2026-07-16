@@ -8,7 +8,7 @@ import { createInitialRunState, runReducer } from "../app/game/run.ts";
 const critter = id => CRITTERS.find(option => option.id === id);
 
 test("starting a run applies starter-specific defaults in one transition", () => {
-  const emberRun = runReducer(createInitialRunState(), { type: "START_RUN", starterId: "emberfox", mapSeed: 42 });
+  const emberRun = runReducer(createInitialRunState(), { type: "START_RUN", starterId: "emberfox", mapSeed: 42, gameMode: "campaign" });
   assert.equal(emberRun.starterId, "emberfox");
   assert.equal(emberRun.selected, "emberfox");
   assert.equal(emberRun.mapSeed, 42);
@@ -16,14 +16,14 @@ test("starting a run applies starter-specific defaults in one transition", () =>
   assert.equal(emberRun.guardianCopies.emberfox, 1);
   assert.equal(emberRun.guardianForms.emberfox, 1);
 
-  const bubbleRun = runReducer(createInitialRunState(), { type: "START_RUN", starterId: "bubblefin", mapSeed: 7 });
+  const bubbleRun = runReducer(createInitialRunState(), { type: "START_RUN", starterId: "bubblefin", mapSeed: 7, gameMode: "campaign" });
   assert.equal(bubbleRun.lives, 10);
   assert.equal(bubbleRun.guardianCopies.bubblefin, 1);
   assert.equal(bubbleRun.guardianForms.bubblefin, 1);
 });
 
 test("recruitment updates roster, copies, selection, and wave note together", () => {
-  const started = runReducer(createInitialRunState(), { type: "START_RUN", starterId: "emberfox", mapSeed: 1 });
+  const started = runReducer(createInitialRunState(), { type: "START_RUN", starterId: "emberfox", mapSeed: 1, gameMode: "campaign" });
   const recruited = runReducer(started, { type: "RECRUIT_GUARDIAN", critter: critter("bubblefin") });
   assert.deepEqual(recruited.runUnlocked, ["emberfox", "bubblefin"]);
   assert.equal(recruited.guardianCopies.bubblefin, 1);
@@ -195,4 +195,14 @@ test("aid follow-ups wait behind recruitment and then open", () => {
   const recruited = runReducer(recruitment, { type: "RECRUIT_GUARDIAN", critter: critter("bubblefin") });
   assert.equal(recruited.activeEventId, "aid-answered");
   assert.equal(recruited.eventOpen, true);
+});
+
+test("endless runs retain their global wave when moving to a new region", () => {
+  const started = runReducer(createInitialRunState(), { type: "START_RUN", starterId: "emberfox", mapSeed: 8, gameMode: "endless" });
+  const atBoss = { ...started, wave: 10, chapter: 1, towers: [{ slot: 2, critter: critter("emberfox"), cooldown: 0, sourceId: "emberfox" }] };
+  const nextRegion = runReducer(atBoss, { type: "ENTER_ENDLESS_REGION", chapter: 2 });
+  assert.equal(nextRegion.gameMode, "endless");
+  assert.equal(nextRegion.wave, 10);
+  assert.equal(nextRegion.chapter, 2);
+  assert.deepEqual(nextRegion.towers, []);
 });

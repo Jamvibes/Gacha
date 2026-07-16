@@ -8,13 +8,13 @@ import { EVENT_BY_ID, choicesForEvent, formatEventText, selectPooledEvent, selec
 import { FACTION_BONDS, FACTION_BY_ID, FACTIONS, getFactionBondStates } from "./game/factions";
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
 import { getEnemyStatuses } from "./game/enemy-statuses";
-import { createWavePlan, groupWavePlan } from "./game/waves";
+import { createEndlessWavePlan, createWavePlan, endlessDifficulty, groupWavePlan, isEndlessBossWave, isRecruitmentWave } from "./game/waves";
 import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
 import { useRunState } from "./game/use-run-state";
 import { starterAttackSpeedBonus, starterBlessing, starterChainDamageMultiplier, starterDamageMultiplier, starterEnemyShieldMultiplier, starterPeriodicBurn, starterPeriodicPush, starterPiercingCriticalMultiplier, starterRangeBonus, starterSlowDurationMultiplier, starterSplashDamageMultiplier } from "./game/starter-bonuses";
 import type { EventChoiceDefinition } from "./game/events";
-import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, StarterStats } from "./game/types";
+import type { AttackFx, BossReward, CombatNumber, Critter, Enemy, GameMode, StarterStats } from "./game/types";
 
 type EnemyEffect = { id: number; cell: number; kind: "healPulse" | "splitBurst" | "starterBurn" | "starterPush"; color: string; label?: string };
 
@@ -56,10 +56,12 @@ export default function Home() {
   const [enemyEffects, setEnemyEffects] = useState<EnemyEffect[]>([]);
   const [combatNumbers, setCombatNumbers] = useState<CombatNumber[]>([]);
   const [stats, setStats] = useState<Record<string, StarterStats>>(emptyStarterStats);
+  const [endlessHighWave, setEndlessHighWave] = useState(0);
+  const [selectedGameMode, setSelectedGameMode] = useState<GameMode>("campaign");
   const {
-    state: { dewshards, lives, wave, chapter, mapSeed, mapVersion, towers, selected, starterId, eventOpen, nextWaveNote, runUnlocked, guardianCopies, guardianForms, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, blessings, activeEventId, recentEventIds, resolvedEventIds, aidMission, queuedEventId, completeAfterEvent, waveDamageMultiplier, starCharmCount },
+    state: { gameMode, dewshards, lives, wave, chapter, mapSeed, mapVersion, towers, selected, starterId, eventOpen, nextWaveNote, runUnlocked, guardianCopies, guardianForms, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, blessings, activeEventId, recentEventIds, resolvedEventIds, aidMission, queuedEventId, completeAfterEvent, waveDamageMultiplier, starCharmCount },
     setters: { setDewshards, setLives, setWave, setTowers, setSelected, setGameSpeed, setStarCharmCount },
-    actions: { restoreRun, startRun, recruitRunGuardian, evolveRunGuardian, grantRosterCopies, resolveRunEvent, finishRunWave, enterRunChapter, completeRun, resetRun },
+    actions: { restoreRun, startRun, recruitRunGuardian, evolveRunGuardian, grantRosterCopies, resolveRunEvent, finishRunWave, enterRunChapter, enterEndlessRegion, completeRun, resetRun },
   } = useRunState();
   const enemyId = useRef(1);
   const attackId = useRef(1);
@@ -83,6 +85,7 @@ export default function Home() {
     setOwned(progress.owned);
     setPetals(progress.petals);
     setStats(progress.stats);
+    setEndlessHighWave(progress.endlessHighWave);
 
     const restored = readRunProgress(localStorage);
     if (restored) {
@@ -97,8 +100,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (saveLoaded) writeMetaProgress(localStorage, { owned, petals, stats });
-  }, [owned, petals, stats, saveLoaded]);
+    if (saveLoaded) writeMetaProgress(localStorage, { owned, petals, stats, endlessHighWave });
+  }, [owned, petals, stats, endlessHighWave, saveLoaded]);
 
   useEffect(() => {
     if (!saveLoaded) return;
@@ -107,14 +110,14 @@ export default function Home() {
       return;
     }
     if (!running) saveRunState();
-  }, [saveLoaded, starterId, selected, chapter, mapSeed, mapVersion, wave, lives, dewshards, towers, runUnlocked, guardianCopies, guardianForms, blessings, activeEventId, recentEventIds, resolvedEventIds, aidMission, queuedEventId, completeAfterEvent, waveDamageMultiplier, starCharmCount, nextWaveNote, eventOpen, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, running]);
+  }, [saveLoaded, gameMode, starterId, selected, chapter, mapSeed, mapVersion, wave, lives, dewshards, towers, runUnlocked, guardianCopies, guardianForms, blessings, activeEventId, recentEventIds, resolvedEventIds, aidMission, queuedEventId, completeAfterEvent, waveDamageMultiplier, starCharmCount, nextWaveNote, eventOpen, recruitChoices, bossRewardOpen, adventureComplete, gameSpeed, running]);
 
   useEffect(() => {
     if (!running || paused) return;
     const timer = window.setInterval(() => {
       starterEffectTick.current++;
       spawnTimer.current--;
-      const difficultyWave = (chapter - 1) * WAVES_PER_CHAPTER + wave;
+      const difficultyWave = gameMode === "endless" ? endlessDifficulty(wave) : (chapter - 1) * WAVES_PER_CHAPTER + wave;
       if (spawnQueue.current.length > 0 && spawnTimer.current <= 0) {
         const definition = ENEMY_BY_ID[spawnQueue.current.shift()!];
         setEnemies(es => [...es, createEnemy(definition, enemyId.current++, difficultyWave, chapter, waveHpMultiplier.current, starterEnemyShieldMultiplier(starterId))]);
@@ -234,15 +237,16 @@ export default function Home() {
       });
     }, 280 / gameSpeed);
     return () => clearInterval(timer);
-  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, gameSpeed, factionBonds, waveDamageMultiplier]);
+  }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, gameSpeed, factionBonds, waveDamageMultiplier, gameMode, mapSeed]);
 
   useEffect(() => {
     if (running && spawnQueue.current.length === 0 && enemies.length === 0) {
-      const bossCleared = wave === WAVES_PER_CHAPTER;
+      const bossCleared = gameMode === "endless" ? isEndlessBossWave(wave) : wave === WAVES_PER_CHAPTER;
       const reward = bossCleared ? 100 + chapter * 50 + wavePetalBonus.current + blessings.harvest * 5 : 18 + wave * 3 + chapter * 5 + wavePetalBonus.current + blessings.harvest * 5;
       setRunning(false);
       setPetals(p => p + reward);
       setMessage(bossCleared ? `${activeChapter.bossName} was defeated! Choose a relic before the journey continues.` : `Wave ${wave} cleared! Your critters found ${reward} petals.`);
+      if (gameMode === "endless") setEndlessHighWave(best => Math.max(best, wave));
       if (starterId) setStats(current => ({ ...current, [starterId]: { ...current[starterId], wavesCleared: current[starterId].wavesCleared + 1, bossesDefeated: current[starterId].bossesDefeated + (bossCleared ? 1 : 0), highestChapter: Math.max(current[starterId].highestChapter, chapter) } }));
       wavePetalBonus.current = 0;
       let choices: Critter[] = [];
@@ -251,7 +255,7 @@ export default function Home() {
       const scheduledEvent = !bossCleared ? selectScheduledEvent(eventContext) : null;
       if (scheduledEvent) {
         eventId = scheduledEvent.id;
-      } else if (!bossCleared && wave < WAVES_PER_CHAPTER && [1, 3, 6].includes(wave)) {
+      } else if (!bossCleared && (gameMode === "endless" || wave < WAVES_PER_CHAPTER) && isRecruitmentWave(gameMode, wave)) {
         const available = CRITTERS.filter(c => c.tier === 1 && (!c.wishOnly || owned.includes(c.id))).sort((a, b) => Number(runUnlocked.includes(a.id)) - Number(runUnlocked.includes(b.id)));
         const offset = wave === 3 && available.length > 3 ? 1 : 0;
         choices = [...available.slice(offset, offset + 3), ...available.slice(0, offset)].slice(0, 3);
@@ -259,7 +263,7 @@ export default function Home() {
       if (!bossCleared && !eventId && !choices.length) eventId = selectPooledEvent(eventContext)?.id ?? null;
       finishRunWave(bossCleared, choices, eventId);
     }
-  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, blessings.harvest, starterId, owned, mapSeed, recentEventIds, resolvedEventIds, unplacedGuardians]);
+  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, blessings.harvest, starterId, owned, mapSeed, recentEventIds, resolvedEventIds, unplacedGuardians, gameMode]);
 
   useEffect(() => {
     if (lives <= 0) { setRunning(false); spawnQueue.current = []; setMessage("The gloom reached the Heart Tree. Regroup and try again!"); }
@@ -278,8 +282,11 @@ export default function Home() {
   const inspectedTower = inspectedTowerSlot === null ? null : towers.find(t => t.slot === inspectedTowerSlot) || null;
   const inspectedEvolutions = inspectedTower ? CRITTERS.filter(c => c.upgradeOf === inspectedTower.critter.id && (c.evolutionPath === "core" || owned.includes(c.id))) : [];
   const statTotals = Object.values(stats).reduce((total, item) => ({ runs: total.runs + item.runs, victories: total.victories + item.victories, bosses: total.bosses + item.bossesDefeated, waves: total.waves + item.wavesCleared }), { runs: 0, victories: 0, bosses: 0, waves: 0 });
-  const upcomingWave = Math.min(WAVES_PER_CHAPTER, wave + 1);
-  const upcomingPlan = createWavePlan({ chapter, wave: upcomingWave, seed: mapSeed, extraEnemies: waveExtraEnemies.current });
+  const upcomingWave = gameMode === "endless" ? wave + 1 : Math.min(WAVES_PER_CHAPTER, wave + 1);
+  const endlessCompletedWave = gameMode === "endless" && lives <= 0 ? Math.max(0, wave - 1) : wave;
+  const upcomingPlan = gameMode === "endless"
+    ? createEndlessWavePlan({ chapter, wave: upcomingWave, seed: mapSeed, extraEnemies: waveExtraEnemies.current })
+    : createWavePlan({ chapter, wave: upcomingWave, seed: mapSeed, extraEnemies: waveExtraEnemies.current });
   const upcomingEnemyIntel = groupWavePlan(upcomingPlan, waveHpMultiplier.current, starterEnemyShieldMultiplier(starterId)).map(group => ({ icon: group.definition.icon, name: group.definition.name, count: group.count, hp: group.hp, shield: group.shield, ability: group.definition.abilityText }));
   const hoveredEnemy = enemies.find(enemy => enemy.id === hoveredEnemyId) || null;
   const hoveredEnemyDefinition = hoveredEnemy ? ENEMY_BY_ID[hoveredEnemy.definitionId as EnemyId] : null;
@@ -306,6 +313,7 @@ export default function Home() {
   function saveRunState(waveOverride = wave) {
     if (!starterId) return;
     writeRunProgress(localStorage, {
+      gameMode,
       starterId,
       selected,
       chapter,
@@ -342,10 +350,10 @@ export default function Home() {
   function chooseStarter(id: string) {
     const critter = CRITTERS.find(c => c.id === id)!;
     if (!critter.starterEligible || (critter.wishOnly && !owned.includes(id))) return;
-    startRun(id, Math.floor(Math.random() * 999999999) + 1);
+    startRun(id, Math.floor(Math.random() * 999999999) + 1, selectedGameMode);
     setOwned(current => current.includes(id) ? current : [...current, id]);
     setStats(current => { const record = current[id] || emptyStarterStats()[id]; return { ...current, [id]: { ...record, runs: record.runs + 1, highestChapter: Math.max(1, record.highestChapter) } }; });
-    setMessage(`${critter.name} has chosen you. Place your first guardian when you are ready!`);
+    setMessage(selectedGameMode === "endless" ? `${critter.name} has chosen you. Survive as many waves as you can!` : `${critter.name} has chosen you. Place your first guardian when you are ready!`);
   }
 
   function recruitGuardian(id: string) {
@@ -401,7 +409,20 @@ export default function Home() {
       setStarCharmCount(count => count + 1);
       setMessage("Astral Guardian's Grace grants every guardian 25% more damage for this run.");
     }
-    setPetals(p => p + (chapter === CHAPTERS.length ? 150 : 75));
+    setPetals(p => p + (gameMode === "campaign" && chapter === CHAPTERS.length ? 150 : 75));
+
+    if (gameMode === "endless") {
+      const nextChapter = chapter % CHAPTERS.length + 1;
+      enterEndlessRegion(nextChapter);
+      setEnemies([]);
+      setAttackFx([]);
+      spawnQueue.current = [];
+      waveHpMultiplier.current = 1;
+      waveExtraEnemies.current = 0;
+      wavePetalBonus.current = 0;
+      window.setTimeout(() => setMessage(`Endless Wave ${wave + 1} awaits in ${CHAPTERS[nextChapter - 1].region}. Re-place your guardians and continue!`), 0);
+      return;
+    }
 
     if (chapter < CHAPTERS.length) {
       const nextChapter = CHAPTERS[chapter];
@@ -426,11 +447,15 @@ export default function Home() {
     const next = wave + 1;
     saveRunState(wave);
     setWave(next);
-    spawnQueue.current = [...createWavePlan({ chapter, wave: next, seed: mapSeed, extraEnemies: waveExtraEnemies.current }).enemyIds];
+    const plan = gameMode === "endless"
+      ? createEndlessWavePlan({ chapter, wave: next, seed: mapSeed, extraEnemies: waveExtraEnemies.current })
+      : createWavePlan({ chapter, wave: next, seed: mapSeed, extraEnemies: waveExtraEnemies.current });
+    spawnQueue.current = [...plan.enemyIds];
     spawnTimer.current = 0;
     starterEffectTick.current = 0;
     setRunning(true);
-    setMessage(next === WAVES_PER_CHAPTER ? `${activeChapter.bossName} has appeared—the boss battle begins!` : `Wave ${next} is rustling through ${activeChapter.region}…`);
+    const bossWave = gameMode === "endless" ? isEndlessBossWave(next) : next === WAVES_PER_CHAPTER;
+    setMessage(bossWave ? `${activeChapter.bossName} has appeared—the boss battle begins!` : `Wave ${next} is rustling through ${activeChapter.region}…`);
   }
 
   function placeTower(slot: number) {
@@ -487,7 +512,12 @@ export default function Home() {
         <section className="choicePanel starterPanel">
           <span className="eyebrow">CHOOSE YOUR STARTER</span>
           <h1 id="starter-title">Who will guard the Heart Tree?</h1>
-          <p>Choose from your unlocked starting critters. Each companion grants a different blessing for this adventure.</p>
+          <p>First choose a mode, then choose an unlocked starting critter. Each companion grants a different blessing.</p>
+          <div className="modeChoices" aria-label="Choose game mode">
+            <button className={selectedGameMode === "campaign" ? "selected" : ""} onClick={() => setSelectedGameMode("campaign")}><span>🗺️</span><b>Campaign</b><small>Protect three regions and defeat their bosses.</small></button>
+            <button className={selectedGameMode === "endless" ? "selected" : ""} onClick={() => setSelectedGameMode("endless")}><span>∞</span><b>Endless Mode</b><small>Survive unlimited waves and set a high score.</small></button>
+          </div>
+          {selectedGameMode === "endless" && <div className="endlessBest">🏆 Your endless best: <b>Wave {endlessHighWave}</b></div>}
           <div className="starterChoices">
             {starterChoices.map(c => <button key={c.id} onClick={() => chooseStarter(c.id)} style={{"--accent": c.color} as React.CSSProperties}>
               <span className="starterPortrait"><CritterArt critter={c}/></span>
@@ -501,7 +531,7 @@ export default function Home() {
       </div>}
 
       {tab === "battle" && <section className="battlePage">
-        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • CHAPTER {chapter} OF {CHAPTERS.length}</span><h1>{activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}><CritterArt critter={starterCritter}/></span><small><b>{starterCritter.name}&apos;s blessing</b>{starterBlessing(starterCritter.id)}</small></div>}</div><div className="battleStats"><span className="resourceStat" tabIndex={0} data-tooltip="Objective health. You lose when it reaches zero.">❤️ <b>{lives}</b></span><span className="resourceStat shardStat" tabIndex={0} data-tooltip="Rare Dewshards come from events. Evolving Tier 1 to Tier 2 costs 1; Tier 2 to Tier 3 costs 2.">💠 <b>{dewshards}</b></span><span className="resourceStat" tabIndex={0} data-tooltip="Current wave in this chapter. Wave 10 is the boss.">🌙 <b>{wave}/{WAVES_PER_CHAPTER}</b></span>{mapSeed > 0 && <span className="resourceStat" tabIndex={0} data-tooltip="This seed recreates the same procedural maps when your run is restored.">🗺️ <b>#{String(mapSeed).slice(-5)}</b></span>}<button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
+        <div className="battleIntro"><div><span className="eyebrow">{activeChapter.region.toUpperCase()} • {gameMode === "endless" ? `ENDLESS REGION ${chapter}` : `CHAPTER ${chapter} OF ${CHAPTERS.length}`}</span><h1>{gameMode === "endless" ? `Endless Watch: ${activeChapter.title}` : activeChapter.title}</h1>{starterCritter && <div className="starterBadge"><span style={{background:starterCritter.color}}><CritterArt critter={starterCritter}/></span><small><b>{starterCritter.name}&apos;s blessing</b>{starterBlessing(starterCritter.id)}</small></div>}</div><div className="battleStats"><span className="resourceStat" tabIndex={0} data-tooltip="Objective health. You lose when it reaches zero.">❤️ <b>{lives}</b></span><span className="resourceStat shardStat" tabIndex={0} data-tooltip="Rare Dewshards come from events. Evolving Tier 1 to Tier 2 costs 1; Tier 2 to Tier 3 costs 2.">💠 <b>{dewshards}</b></span><span className="resourceStat" tabIndex={0} data-tooltip={gameMode === "endless" ? "Your endless wave. Every tenth wave is a boss." : "Current wave in this chapter. Wave 10 is the boss."}>🌙 <b>{gameMode === "endless" ? `∞ ${wave} • BEST ${endlessHighWave}` : `${wave}/${WAVES_PER_CHAPTER}`}</b></span>{mapSeed > 0 && <span className="resourceStat" tabIndex={0} data-tooltip="This seed recreates the same procedural maps when your run is restored.">🗺️ <b>#{String(mapSeed).slice(-5)}</b></span>}<button className={`speedButton ${gameSpeed === 2 ? "fast" : ""}`} onClick={() => setGameSpeed(speed => speed === 1 ? 2 : 1)} aria-label={`Set battle speed to ${gameSpeed === 1 ? "two times" : "normal"}`}>⏩ <b>{gameSpeed}×</b></button></div></div>
         <div className="gameShell">
           <div className={`field ${activeChapter.theme}`} aria-label={`${activeChapter.region} tower defence battlefield`}>
             {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, cell) => {
@@ -553,9 +583,9 @@ export default function Home() {
             <div className="selectedInfo"><span style={{background:selectedCritter.color}}><CritterArt critter={selectedCritter}/></span><div><b>Tier {selectedCritter.tier} • {selectedCritter.skill}</b><small>Damage {selectedCritter.damage} • Range {selectedCritter.range} • {remainingCopies(selected)} available</small></div></div>
             <div className="factionBondPanel"><div className="buffTitle"><b>Faction Bonds</b><small>Placed copies activate bonds</small></div>{placedFactionBonds.length ? <div className="factionBondList">{placedFactionBonds.map(({faction,count,level,effects}) => <span key={faction.id} className={level ? `active level-${level}` : ""}><i>{faction.icon}</i><b>{faction.name}<em>{count}/3</em></b><small>{level === 2 ? effects.levelTwo : level === 1 ? effects.levelOne : `Place ${2 - count} more ${faction.name} guardian to activate Bond I.`}</small></span>)}</div> : <p>Place 2 guardians from one faction to activate its first bond.</p>}</div>
             <div className="buffPanel"><div className="buffTitle"><b>Run Blessings</b><small>Lasting buffs &amp; debuffs</small></div>{activeBuffs.length ? <div className="buffList">{activeBuffs.map(blessing => <span key={blessing.name} className={blessing.polarity}><i>{blessing.icon}</i><b>{blessing.name}<em>{blessing.polarity}</em></b><small>{blessing.description}</small></span>)}</div> : <p>No lasting Blessings yet. One-off event rewards are not shown here.</p>}</div>
-            {!running && wave < WAVES_PER_CHAPTER && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><EnemyArt kind={enemy.name} icon={enemy.icon}/><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP{enemy.shield ? ` • ${enemy.shield} shield` : ""} each</small><p>{enemy.ability}</p></div></article>)}</div>}
-            {wave > 0 && wave < WAVES_PER_CHAPTER && <div className={`waveCondition ${wave === WAVES_PER_CHAPTER - 1 ? "bossWarning" : ""}`}><small>{wave === WAVES_PER_CHAPTER - 1 ? "BOSS APPROACHING" : "NEXT WAVE"}</small><b>{wave === WAVES_PER_CHAPTER - 1 ? activeChapter.bossName : nextWaveNote}</b></div>}
-            {lives > 0 ? <button className="primary" disabled={running || wave >= WAVES_PER_CHAPTER || eventOpen || recruitChoices.length > 0 || bossRewardOpen || adventureComplete || !starterId} onClick={startWave}>{running ? paused ? "Battle paused" : wave === WAVES_PER_CHAPTER ? "Boss battle in progress…" : "Wave in progress…" : recruitChoices.length ? "Recruit a guardian" : eventOpen ? "Choose a forest event" : bossRewardOpen ? "Choose your boss reward" : adventureComplete ? "Adventure complete!" : wave >= WAVES_PER_CHAPTER ? `${activeChapter.region} protected!` : wave === WAVES_PER_CHAPTER - 1 ? `Challenge ${activeChapter.bossName}` : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Choose a new starter</button>}
+            {!running && (gameMode === "endless" || wave < WAVES_PER_CHAPTER) && !eventOpen && recruitChoices.length === 0 && !bossRewardOpen && <div className="scoutReport"><div className="scoutTitle"><span>🔭</span><div><small>SCOUT REPORT</small><b>Wave {upcomingWave}</b></div></div>{upcomingEnemyIntel.map(enemy => <article key={enemy.name}><EnemyArt kind={enemy.name} icon={enemy.icon}/><div><b>{enemy.name} ×{enemy.count}</b><small>{enemy.hp} HP{enemy.shield ? ` • ${enemy.shield} shield` : ""} each</small><p>{enemy.ability}</p></div></article>)}</div>}
+            {wave > 0 && (gameMode === "endless" || wave < WAVES_PER_CHAPTER) && <div className={`waveCondition ${(gameMode === "endless" ? isEndlessBossWave(wave + 1) : wave === WAVES_PER_CHAPTER - 1) ? "bossWarning" : ""}`}><small>{(gameMode === "endless" ? isEndlessBossWave(wave + 1) : wave === WAVES_PER_CHAPTER - 1) ? "BOSS APPROACHING" : "NEXT WAVE"}</small><b>{(gameMode === "endless" ? isEndlessBossWave(wave + 1) : wave === WAVES_PER_CHAPTER - 1) ? activeChapter.bossName : nextWaveNote}</b></div>}
+            {lives > 0 ? <button className="primary" disabled={running || (gameMode === "campaign" && wave >= WAVES_PER_CHAPTER) || eventOpen || recruitChoices.length > 0 || bossRewardOpen || adventureComplete || !starterId} onClick={startWave}>{running ? paused ? "Battle paused" : (gameMode === "endless" ? isEndlessBossWave(wave) : wave === WAVES_PER_CHAPTER) ? "Boss battle in progress…" : "Wave in progress…" : recruitChoices.length ? "Recruit a guardian" : eventOpen ? "Choose a forest event" : bossRewardOpen ? "Choose your boss reward" : adventureComplete ? "Adventure complete!" : gameMode === "campaign" && wave >= WAVES_PER_CHAPTER ? `${activeChapter.region} protected!` : (gameMode === "endless" ? isEndlessBossWave(wave + 1) : wave === WAVES_PER_CHAPTER - 1) ? `Challenge ${activeChapter.bossName}` : `Begin wave ${wave + 1}`}</button> : <button className="primary" onClick={resetBattle}>Choose a new starter</button>}
             {wave > 0 && !running && <button className="textButton" onClick={resetBattle}>Restart with a new starter</button>}
           </aside>
         </div>
@@ -583,14 +613,23 @@ export default function Home() {
         </div>}
         {bossRewardOpen && <div className="choiceOverlay bossOverlay" role="dialog" aria-modal="true" aria-labelledby="boss-reward-title">
           <section className="choicePanel bossPanel">
-            <span className="bossCrown">🏆</span><span className="eyebrow">CHAPTER {chapter} BOSS DEFEATED</span>
+            <span className="bossCrown">🏆</span><span className="eyebrow">{gameMode === "endless" ? `ENDLESS WAVE ${wave} CLEARED` : `CHAPTER ${chapter} BOSS DEFEATED`}</span>
             <h1 id="boss-reward-title">Choose a relic from {activeChapter.bossName}</h1>
-            <p>{chapter < CHAPTERS.length ? `Your reward will travel with you into Chapter ${chapter + 1}.` : "Choose your final treasure to complete this three-chapter adventure."} Every choice also grants bonus petals.</p>
+            <p>{gameMode === "endless" ? `Your reward travels into Wave ${wave + 1} and the next generated region.` : chapter < CHAPTERS.length ? `Your reward will travel with you into Chapter ${chapter + 1}.` : "Choose your final treasure to complete this three-chapter adventure."} Every choice also grants bonus petals.</p>
             <div className="eventChoices bossChoices">
-              <button onClick={() => chooseBossReward("heartseed")}><span>🌱</span><div><small>FORTIFY</small><b>Ancient Heartseed</b><p>Restore 5 objective health and gain {chapter === CHAPTERS.length ? 150 : 75} petals.</p></div></button>
-              <button onClick={() => chooseBossReward("embercore")}><span>🔥</span><div><small>MULTIPLY</small><b>Twinflame Totem</b><p>Gain one additional copy of every guardian in your roster and {chapter === CHAPTERS.length ? 150 : 75} petals.</p></div></button>
-              <button onClick={() => chooseBossReward("starcharm")}><span>⭐</span><div><small>EMPOWER</small><b>Star Charm</b><p>Guardians deal 25% more damage for this run and you gain {chapter === CHAPTERS.length ? 150 : 75} petals.</p></div></button>
+              <button onClick={() => chooseBossReward("heartseed")}><span>🌱</span><div><small>FORTIFY</small><b>Ancient Heartseed</b><p>Restore 5 objective health and gain {gameMode === "campaign" && chapter === CHAPTERS.length ? 150 : 75} petals.</p></div></button>
+              <button onClick={() => chooseBossReward("embercore")}><span>🔥</span><div><small>MULTIPLY</small><b>Twinflame Totem</b><p>Gain one additional copy of every guardian in your roster and {gameMode === "campaign" && chapter === CHAPTERS.length ? 150 : 75} petals.</p></div></button>
+              <button onClick={() => chooseBossReward("starcharm")}><span>⭐</span><div><small>EMPOWER</small><b>Star Charm</b><p>Guardians deal 25% more damage for this run and you gain {gameMode === "campaign" && chapter === CHAPTERS.length ? 150 : 75} petals.</p></div></button>
             </div>
+          </section>
+        </div>}
+        {gameMode === "endless" && starterId && lives <= 0 && <div className="choiceOverlay endlessGameOver" role="dialog" aria-modal="true" aria-labelledby="endless-game-over-title">
+          <section className="choicePanel endlessGameOverPanel">
+            <span className="endlessSymbol">∞</span><span className="eyebrow">THE ENDLESS WATCH HAS ENDED</span>
+            <h1 id="endless-game-over-title">You reached Wave {wave}</h1>
+            <p>The Gloom reached the objective, but your record will remain in Keeper Statistics.</p>
+            <div className="endlessScore"><span><small>WAVES CLEARED</small><b>{endlessCompletedWave}</b></span><span><small>PERSONAL BEST</small><b>{endlessHighWave}</b></span></div>
+            <button className="primary" onClick={resetBattle}>Choose a mode and starter</button>
           </section>
         </div>}
         {inspectedTower && <div className="choiceOverlay towerInfoOverlay" role="dialog" aria-modal="true" aria-labelledby="tower-info-title">
@@ -651,6 +690,7 @@ export default function Home() {
           <article><span>🏆</span><b>{statTotals.victories}</b><small>Full victories</small></article>
           <article><span>👑</span><b>{statTotals.bosses}</b><small>Bosses defeated</small></article>
           <article><span>🌙</span><b>{statTotals.waves}</b><small>Waves cleared</small></article>
+          <article className="endlessRecord"><span>∞</span><b>{endlessHighWave}</b><small>Endless best wave</small></article>
         </div>
         <div className="starterRecords">
           {CRITTERS.filter(c => c.starterEligible).map(critter => { const record = stats[critter.id] || emptyStarterStats()[critter.id]; const unlocked = !critter.wishOnly || owned.includes(critter.id); const winRate = record.runs ? Math.round(record.victories / record.runs * 100) : 0; return <article key={critter.id} className={!unlocked ? "lockedRecord" : ""} style={{"--accent": critter.color} as React.CSSProperties}>
