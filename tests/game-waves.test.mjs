@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ENEMY_BY_ID, ENEMY_DEFINITIONS, applyHealerPulse, createEnemy, createSplitOffspring } from "../app/game/enemies.ts";
 import { getEnemyStatuses } from "../app/game/enemy-statuses.ts";
-import { createWavePlan, groupWavePlan } from "../app/game/waves.ts";
+import { createEndlessWavePlan, createWavePlan, endlessDifficulty, groupWavePlan, isEndlessBossWave, isRecruitmentWave } from "../app/game/waves.ts";
 
 test("the initial enemy roster covers every requested role", () => {
   assert.equal(ENEMY_BY_ID.gloomling.ability, "basic");
@@ -45,6 +45,23 @@ test("event enemies and scout groups come from the same plan", () => {
   assert.equal(groups.reduce((total, group) => total + group.count, 0), plan.enemyIds.length);
   const brute = groups.find(group => group.definition.id === "bramble-brute");
   assert.equal(brute.shield, Math.round(brute.hp * 0.35 * 0.75));
+});
+
+test("endless waves are deterministic, scale forever, and place bosses every ten waves", () => {
+  assert.equal(endlessDifficulty(1), 1);
+  assert.ok(endlessDifficulty(75) > endlessDifficulty(35));
+  assert.deepEqual(createEndlessWavePlan({ chapter: 1, wave: 37, seed: 123 }), createEndlessWavePlan({ chapter: 1, wave: 37, seed: 123 }));
+  assert.equal(isEndlessBossWave(9), false);
+  assert.equal(isEndlessBossWave(10), true);
+  assert.equal(isEndlessBossWave(100), true);
+  assert.deepEqual(createEndlessWavePlan({ chapter: 1, wave: 10, seed: 1 }).enemyIds, ["thornmaw"]);
+  assert.deepEqual(createEndlessWavePlan({ chapter: 2, wave: 20, seed: 1 }).enemyIds, ["mire-monarch"]);
+  assert.deepEqual(createEndlessWavePlan({ chapter: 3, wave: 30, seed: 1 }).enemyIds, ["hollow-crown"]);
+});
+
+test("endless recruitment uses the opening waves and then waves ending in five", () => {
+  assert.deepEqual([1, 3, 5, 6, 15, 25].filter(wave => isRecruitmentWave("endless", wave)), [1, 3, 6, 15, 25]);
+  assert.deepEqual([1, 3, 6, 15].filter(wave => isRecruitmentWave("campaign", wave)), [1, 3, 6]);
 });
 
 test("healers restore nearby allies but not themselves or other healers", () => {

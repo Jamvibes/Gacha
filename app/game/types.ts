@@ -52,7 +52,8 @@ export type CombatNumber = { id: number; cell: number; value: number; kind: "dam
 export type StarterStats = { runs: number; victories: number; bossesDefeated: number; wavesCleared: number; highestChapter: number };
 export type BlessingCounts = Record<BlessingId, number>;
 export type AidMission = { guardianId: string; wavesRemaining: number };
-export type MetaProgress = { version: 1; owned: string[]; petals: number; stats: Record<string, StarterStats> };
+export type GameMode = "campaign" | "endless";
+export type MetaProgress = { version: 2; owned: string[]; petals: number; stats: Record<string, StarterStats>; endlessHighWave: number };
 
 export type ChapterConfig = {
   number: number;
@@ -80,7 +81,8 @@ export type EnemyCodexEntry = {
 };
 
 export type RunSave = {
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
+  gameMode?: GameMode;
   starterId: string;
   selected: string;
   chapter: number;
@@ -118,6 +120,7 @@ export type RunSave = {
 };
 
 export type RestoredRun = {
+  gameMode: GameMode;
   starterId: string;
   selected: string;
   chapter: number;

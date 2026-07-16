@@ -3,9 +3,10 @@ import { CRITTERS, rootCritterId } from "./content.ts";
 import { formatEventText } from "./events.ts";
 import { starterStartingCopies, starterStartingLives } from "./starter-bonuses.ts";
 import type { EventChoiceDefinition } from "./events.ts";
-import type { AidMission, BlessingCounts, Critter, RestoredRun, Tower } from "./types.ts";
+import type { AidMission, BlessingCounts, Critter, GameMode, RestoredRun, Tower } from "./types.ts";
 
 export type RunState = {
+  gameMode: GameMode;
   dewshards: number;
   lives: number;
   wave: number;
@@ -36,6 +37,7 @@ export type RunState = {
 };
 
 export const createInitialRunState = (): RunState => ({
+  gameMode: "campaign",
   dewshards: 0,
   lives: 10,
   wave: 0,
@@ -68,13 +70,14 @@ export const createInitialRunState = (): RunState => ({
 export type RunAction =
   | { type: "SET_FIELD"; field: keyof RunState; value: unknown }
   | { type: "RESTORE_RUN"; restored: RestoredRun }
-  | { type: "START_RUN"; starterId: string; mapSeed: number }
+  | { type: "START_RUN"; starterId: string; mapSeed: number; gameMode: GameMode }
   | { type: "RECRUIT_GUARDIAN"; critter: Critter }
   | { type: "EVOLVE_GUARDIAN"; slot: number; evolution: Critter }
   | { type: "GRANT_ROSTER_COPIES" }
   | { type: "RESOLVE_EVENT"; choice: EventChoiceDefinition; selectedName: string; rewardGuardianId?: string }
   | { type: "FINISH_WAVE"; boss: boolean; recruitChoices: Critter[]; eventId: string | null }
   | { type: "ENTER_CHAPTER"; chapter: number }
+  | { type: "ENTER_ENDLESS_REGION"; chapter: number }
   | { type: "COMPLETE_ADVENTURE" }
   | { type: "RESET_RUN" };
 
@@ -89,6 +92,7 @@ export function runReducer(state: RunState, action: RunAction): RunState {
     const restored = action.restored;
     return {
       ...createInitialRunState(),
+      gameMode: restored.gameMode,
       dewshards: restored.dewshards,
       lives: restored.lives,
       wave: restored.wave,
@@ -121,6 +125,7 @@ export function runReducer(state: RunState, action: RunAction): RunState {
   if (action.type === "START_RUN") {
     return {
       ...createInitialRunState(),
+      gameMode: action.gameMode,
       starterId: action.starterId,
       selected: action.starterId,
       mapSeed: action.mapSeed,
@@ -245,6 +250,20 @@ export function runReducer(state: RunState, action: RunAction): RunState {
       recruitChoices: [],
       bossRewardOpen: false,
       nextWaveNote: "A new region awaits",
+    };
+  }
+
+  if (action.type === "ENTER_ENDLESS_REGION") {
+    return {
+      ...state,
+      chapter: action.chapter,
+      towers: [],
+      eventOpen: Boolean(state.queuedEventId),
+      activeEventId: state.queuedEventId,
+      queuedEventId: null,
+      recruitChoices: [],
+      bossRewardOpen: false,
+      nextWaveNote: "A new endless region awaits",
     };
   }
 

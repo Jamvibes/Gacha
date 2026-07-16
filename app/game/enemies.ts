@@ -43,7 +43,7 @@ export const ENEMY_SPRITES = Object.fromEntries(ENEMY_DEFINITIONS.filter(enemy =
 export const ENEMY_CODEX: EnemyCodexEntry[] = ENEMY_DEFINITIONS.map(enemy => ({ name: enemy.name, title: enemy.title, icon: enemy.icon, chapter: enemy.chapter, role: enemy.role, defence: enemy.defence, ability: enemy.abilityText, color: enemy.color, boss: enemy.boss }));
 
 export function enemyHealth(definition: EnemyDefinition, difficulty: number, chapter: number, hpMultiplier = 1) {
-  const base = definition.boss ? 1200 + chapter * 800 : 58 + difficulty * 18;
+  const base = definition.boss ? 1200 + chapter * 800 + Math.max(0, difficulty - chapter * 10) * 120 : 58 + difficulty * 18;
   return Math.round(base * definition.hpMultiplier * hpMultiplier);
 }
 
