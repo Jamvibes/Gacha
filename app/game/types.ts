@@ -23,6 +23,7 @@ export type Critter = {
   sprite?: string;
   burnDamageTakenMultiplier?: number;
   criticalDamageMultiplier?: number;
+  rangeLimitOverride?: boolean;
 };
 
 export type Enemy = {
