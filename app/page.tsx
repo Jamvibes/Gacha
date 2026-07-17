@@ -9,7 +9,7 @@ import { FACTION_BONDS, FACTION_BY_ID, FACTIONS, getFactionBondStates } from "./
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
 import { getEnemyStatuses } from "./game/enemy-statuses";
 import { createEndlessWavePlan, createWavePlan, endlessDifficulty, groupWavePlan, isEndlessBossWave, isRecruitmentWave } from "./game/waves";
-import { cellPoint, generateChapterPath, pathRouteClass } from "./game/map";
+import { cellPoint, generateChapterPath, pathProgressPoint, pathRouteClass } from "./game/map";
 import { clearRunProgress, readMetaProgress, readRunProgress, writeMetaProgress, writeRunProgress } from "./game/save";
 import { useRunState } from "./game/use-run-state";
 import { starterAttackSpeedBonus, starterBlessing, starterChainDamageMultiplier, starterDamageMultiplier, starterEnemyShieldMultiplier, starterPeriodicBurn, starterPeriodicPush, starterPiercingCriticalMultiplier, starterRangeBonus, starterSlowDurationMultiplier, starterSplashDamageMultiplier } from "./game/starter-bonuses";
@@ -22,6 +22,8 @@ const cellStyle = (cell: number) => {
   const point = cellPoint(cell);
   return { left: `${point.x}%`, top: `${point.y}%` } as React.CSSProperties;
 };
+
+const pointStyle = (point: { x: number; y: number }) => ({ left: `${point.x}%`, top: `${point.y}%` } as React.CSSProperties);
 
 function CritterArt({ critter, animated = false, attacking = false }: { critter: Critter; animated?: boolean; attacking?: boolean }) {
   if (!critter.sprite) return <span className="critterEmoji">{critter.icon}</span>;
@@ -218,7 +220,7 @@ export default function Home() {
                 hit.enemy.hp -= damage - shieldDamage;
               }
               const fxId = attackId.current++;
-              newEffects.push({ id: fxId, from: slotCell, to: targetCell, color: t.critter.color, critterId: t.critter.id });
+              newEffects.push({ id: fxId, from: slotCell, to: targetCell, toPoint: pathProgressPoint(activePath, hit.enemy.step), color: t.critter.color, critterId: t.critter.id });
               addCombatNumber(targetCell, damage, "damage", critical);
               window.setTimeout(() => setAttackFx(fx => fx.filter(item => item.id !== fxId)), 520);
             });
@@ -558,15 +560,15 @@ export default function Home() {
               </Fragment>;
             })}
             {enemies.map(e => {
-              const p = activePath[Math.min(activePath.length - 1, Math.floor(e.step))];
+              const p = pathProgressPoint(activePath, e.step);
               const definition = ENEMY_BY_ID[e.definitionId as EnemyId];
               const statuses = getEnemyStatuses(e, definition);
-              return <div key={e.id} tabIndex={0} role="group" aria-label={`${e.kind}, ${definition.role}, ${Math.max(0, Math.ceil(e.hp))} health${statuses.length ? `, ${statuses.map(status => status.label).join(", ")}` : ""}`} onMouseEnter={() => setHoveredEnemyId(e.id)} onMouseLeave={() => setHoveredEnemyId(current => current === e.id ? null : current)} onFocus={() => setHoveredEnemyId(e.id)} onBlur={() => setHoveredEnemyId(current => current === e.id ? null : current)} className={`enemy role-${definition.ability} ${e.boss ? "boss" : ""} ${(e.burnTicks || 0) > 0 ? "burning" : ""} ${(e.slowTicks || 0) > 0 ? "slowed" : ""}`} style={{...cellStyle(p), "--enemy-color": definition.color} as React.CSSProperties}>{e.boss && <small>BOSS</small>}{statuses.length > 0 && <span className="enemyStatuses">{statuses.map(status => <i key={status.id} className={`status-${status.id}`} title={`${status.label}: ${status.detail}`} aria-label={`${status.label}: ${status.detail}`}>{status.icon}</i>)}</span>}<EnemyArt kind={e.kind} icon={e.icon} animated/>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>;
+              return <div key={e.id} tabIndex={0} role="group" aria-label={`${e.kind}, ${definition.role}, ${Math.max(0, Math.ceil(e.hp))} health${statuses.length ? `, ${statuses.map(status => status.label).join(", ")}` : ""}`} onMouseEnter={() => setHoveredEnemyId(e.id)} onMouseLeave={() => setHoveredEnemyId(current => current === e.id ? null : current)} onFocus={() => setHoveredEnemyId(e.id)} onBlur={() => setHoveredEnemyId(current => current === e.id ? null : current)} className={`enemy role-${definition.ability} ${e.boss ? "boss" : ""} ${(e.burnTicks || 0) > 0 ? "burning" : ""} ${(e.slowTicks || 0) > 0 ? "slowed" : ""}`} style={{...pointStyle(p), "--enemy-color": definition.color, "--move-duration": `${250 / gameSpeed}ms`} as React.CSSProperties}>{e.boss && <small>BOSS</small>}{statuses.length > 0 && <span className="enemyStatuses">{statuses.map(status => <i key={status.id} className={`status-${status.id}`} title={`${status.label}: ${status.detail}`} aria-label={`${status.label}: ${status.detail}`}>{status.icon}</i>)}</span>}<EnemyArt kind={e.kind} icon={e.icon} animated/>{e.maxShield > 0 && <i className="shieldBar"><b style={{width: `${Math.max(0,e.shield/e.maxShield*100)}%`}}/></i>}<i className="healthBar"><b style={{width: `${Math.max(0,e.hp/e.maxHp*100)}%`}}/></i></div>;
             })}
             {enemyEffects.map(effect => <i key={effect.id} className={`enemyEffect ${effect.kind}`} style={{...cellStyle(effect.cell), "--enemy-color": effect.color} as React.CSSProperties}><b/><em/>{effect.label && <span>{effect.label}</span>}</i>)}
-            {hoveredEnemy && hoveredEnemyDefinition && (() => { const cell = activePath[Math.min(activePath.length - 1, Math.floor(hoveredEnemy.step))]; const point = cellPoint(cell); const statuses = getEnemyStatuses(hoveredEnemy, hoveredEnemyDefinition); return <aside className={`enemyInfo ${point.y < 28 ? "below" : "above"}`} style={{...cellStyle(cell), "--enemy-color": hoveredEnemyDefinition.color} as React.CSSProperties}><span>{hoveredEnemyDefinition.icon}</span><div><small>{hoveredEnemyDefinition.role}</small><b>{hoveredEnemyDefinition.name}</b><em>{Math.max(0, Math.ceil(hoveredEnemy.hp))}/{hoveredEnemy.maxHp} HP{hoveredEnemy.shield > 0 ? ` • ${Math.ceil(hoveredEnemy.shield)} shield` : ""}</em><p>{hoveredEnemyDefinition.abilityText}</p>{statuses.length > 0 && <ul className="enemyStatusDetails">{statuses.map(status => <li key={status.id}><span>{status.icon}</span><b>{status.label}</b><small>{status.detail}</small></li>)}</ul>}<i>{hoveredEnemyDefinition.speedMultiplier > 1.2 ? "FAST" : hoveredEnemyDefinition.speedMultiplier < 0.85 ? "SLOW" : "STEADY"}</i></div></aside>; })()}
+            {hoveredEnemy && hoveredEnemyDefinition && (() => { const point = pathProgressPoint(activePath, hoveredEnemy.step); const statuses = getEnemyStatuses(hoveredEnemy, hoveredEnemyDefinition); return <aside className={`enemyInfo ${point.y < 28 ? "below" : "above"}`} style={{...pointStyle(point), "--enemy-color": hoveredEnemyDefinition.color} as React.CSSProperties}><span>{hoveredEnemyDefinition.icon}</span><div><small>{hoveredEnemyDefinition.role}</small><b>{hoveredEnemyDefinition.name}</b><em>{Math.max(0, Math.ceil(hoveredEnemy.hp))}/{hoveredEnemy.maxHp} HP{hoveredEnemy.shield > 0 ? ` • ${Math.ceil(hoveredEnemy.shield)} shield` : ""}</em><p>{hoveredEnemyDefinition.abilityText}</p>{statuses.length > 0 && <ul className="enemyStatusDetails">{statuses.map(status => <li key={status.id}><span>{status.icon}</span><b>{status.label}</b><small>{status.detail}</small></li>)}</ul>}<i>{hoveredEnemyDefinition.speedMultiplier > 1.2 ? "FAST" : hoveredEnemyDefinition.speedMultiplier < 0.85 ? "SLOW" : "STEADY"}</i></div></aside>; })()}
             {attackFx.map(fx => {
-              const from = cellPoint(fx.from); const to = cellPoint(fx.to);
+              const from = cellPoint(fx.from); const to = fx.toPoint ?? cellPoint(fx.to);
               return <i key={fx.id} className={`attackFx fx-${fx.critterId}`} style={{"--from-x":`${from.x}%`,"--from-y":`${from.y}%`,"--to-x":`${to.x}%`,"--to-y":`${to.y}%`,"--fx-color":fx.color} as React.CSSProperties}><b/></i>;
             })}
             {combatNumbers.map(number => <b key={number.id} className={`combatNumber ${number.kind} ${number.critical ? "critical" : ""}`} style={cellStyle(number.cell)}>{number.kind === "heal" ? "+" : "−"}{number.value}{number.critical && <small>CRIT!</small>}</b>)}

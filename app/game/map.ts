@@ -105,3 +105,14 @@ export const cellPoint = (cell: number) => ({
   x: (cell % BOARD_SIZE) * (100 / BOARD_SIZE) + 100 / BOARD_SIZE / 2,
   y: Math.floor(cell / BOARD_SIZE) * (100 / BOARD_SIZE) + 100 / BOARD_SIZE / 2,
 });
+
+export function pathProgressPoint(path: number[], step: number) {
+  if (!path.length) return cellPoint(0);
+  const progress = Math.min(path.length - 1, Math.max(0, Number.isFinite(step) ? step : 0));
+  const currentIndex = Math.floor(progress);
+  const nextIndex = Math.min(path.length - 1, currentIndex + 1);
+  const fraction = progress - currentIndex;
+  const current = cellPoint(path[currentIndex]);
+  const next = cellPoint(path[nextIndex]);
+  return { x: current.x + (next.x - current.x) * fraction, y: current.y + (next.y - current.y) * fraction };
+}
