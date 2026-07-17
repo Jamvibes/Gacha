@@ -9,7 +9,6 @@ export type BlessingDefinition = {
 };
 
 export const BLESSINGS: BlessingDefinition[] = [
-  { id: "harvest", name: "Moonbloom Covenant", icon: "🌸", polarity: "buff", description: stacks => `+${stacks * 5} petals after every wave for the rest of this run` },
   { id: "warden", name: "Oath of the Deep Roots", icon: "🌳", polarity: "buff", description: stacks => `+${stacks * 5}% guardian damage for the rest of this run` },
 ];
 

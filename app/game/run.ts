@@ -218,7 +218,10 @@ export function runReducer(state: RunState, action: RunAction): RunState {
       }
       if (effect.type === "randomTierGuardian") {
         const guardian = CRITTERS.find(critter => critter.id === action.rewardGuardianId && critter.tier === effect.tier);
-        if (!guardian) continue;
+        if (!guardian) {
+          next = { ...next, dewshards: next.dewshards + effect.fallbackDewshards };
+          continue;
+        }
         const familyId = rootCritterId(guardian.id);
         next = { ...next, runUnlocked: next.runUnlocked.includes(familyId) ? next.runUnlocked : [...next.runUnlocked, familyId], guardianForms: { ...next.guardianForms, [guardian.id]: (next.guardianForms[guardian.id] || 0) + 1 }, guardianCopies: { ...next.guardianCopies, [familyId]: (next.guardianCopies[familyId] || 0) + 1 }, selected: guardian.id, nextWaveNote: `${guardian.name}, a Tier 2 guardian, joined the run` };
       }

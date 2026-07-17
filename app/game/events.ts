@@ -2,17 +2,16 @@ import { CRITTERS } from "./content.ts";
 import type { BlessingId, Critter } from "./types.ts";
 
 export type EventEffect =
-  | { type: "petals"; amount: number }
   | { type: "dewshards"; amount: number }
   | { type: "guardianCopy"; amount: number; target: "selected" }
   | { type: "heal"; amount: number }
   | { type: "blessing"; blessingId: BlessingId; amount: number }
-  | { type: "nextWave"; hpMultiplier: number; extraEnemies: number; petalBonus: number; note: string }
+  | { type: "nextWave"; hpMultiplier: number; extraEnemies: number; note: string }
   | { type: "runDamageMultiplier"; multiplier: number }
   | { type: "sendGuardian"; guardianId: string; waves: number }
   | { type: "temporaryDamage"; multiplier: number; waves: 1 }
   | { type: "returnAidGuardian" }
-  | { type: "randomTierGuardian"; tier: 2 };
+  | { type: "randomTierGuardian"; tier: 2; fallbackDewshards: number };
 
 export type EventRequirement = { type: "unplacedGuardianCopy" };
 
@@ -76,7 +75,7 @@ export const EVENTS: EventDefinition[] = [
     pool: false,
     repeatable: false,
     choices: [
-      { id: "welcome-reinforcements", icon: "🌟", label: "REINFORCEMENTS", title: "Welcome the reinforcements", description: "Your sent guardian returns, accompanied by a random Tier 2 guardian.", resultMessage: "{guardian} returns with {reward}, who joins the run.", effects: [{ type: "returnAidGuardian" }, { type: "randomTierGuardian", tier: 2 }] },
+      { id: "welcome-reinforcements", icon: "🌟", label: "REINFORCEMENTS", title: "Welcome the reinforcements", description: "Your sent guardian returns with a random unlocked Tier 2 guardian you have not gained during this run. If none remain, gain 2 Dewshards instead.", resultMessage: "{guardian} returns with {reward}, who joins the run.", effects: [{ type: "returnAidGuardian" }, { type: "randomTierGuardian", tier: 2, fallbackDewshards: 2 }] },
     ],
   },
   {
@@ -86,8 +85,8 @@ export const EVENTS: EventDefinition[] = [
     description: "At this familiar turning point, the ancient roots offer strength—but every promise shapes the next battle.",
     weight: 1,
     choices: [
-      { id: "accept-rootward", icon: "🌿", label: "STEADY • 💠 1", title: "Accept the rootward", description: "Heal 2 objective health, gain 1 Dewshard, and receive the Oath of the Deep Roots. The next wave has 2 extra enemies.", resultMessage: "The Heart Tree answers with patient strength.", effects: [{ type: "heal", amount: 2 }, { type: "dewshards", amount: 1 }, { type: "blessing", blessingId: "warden", amount: 1 }, { type: "runDamageMultiplier", multiplier: 1.05 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 2, petalBonus: 15, note: "Rootward promise: +2 health • 2 extra enemies • +15 clear reward" }] },
-      { id: "gather-heart-sap", icon: "💠", label: "BOLD • 💠 2", title: "Gather shimmering heart-sap", description: "Gain 2 Dewshards and 25 petals. The next wave has 20% more health.", resultMessage: "The heart-sap hardens into two bright Dewshards.", effects: [{ type: "dewshards", amount: 2 }, { type: "petals", amount: 25 }, { type: "nextWave", hpMultiplier: 1.2, extraEnemies: 0, petalBonus: 10, note: "Heart-sap trial: enemies have 20% more health • +10 clear reward" }] },
+      { id: "accept-rootward", icon: "🌿", label: "STEADY • 💠 1", title: "Accept the rootward", description: "Heal 2 objective health, gain 1 Dewshard, and receive the Oath of the Deep Roots. The next wave has 2 extra enemies.", resultMessage: "The Heart Tree answers with patient strength.", effects: [{ type: "heal", amount: 2 }, { type: "dewshards", amount: 1 }, { type: "blessing", blessingId: "warden", amount: 1 }, { type: "runDamageMultiplier", multiplier: 1.05 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 2, note: "Rootward promise: +2 health • 2 extra enemies" }] },
+      { id: "gather-heart-sap", icon: "💠", label: "BOLD • 💠 2", title: "Gather shimmering heart-sap", description: "Gain 2 Dewshards. The next wave has 20% more health.", resultMessage: "The heart-sap hardens into two bright Dewshards.", effects: [{ type: "dewshards", amount: 2 }, { type: "nextWave", hpMultiplier: 1.2, extraEnemies: 0, note: "Heart-sap trial: enemies have 20% more health" }] },
     ],
   },
   {
@@ -97,9 +96,9 @@ export const EVENTS: EventDefinition[] = [
     description: "The forest offers three paths. Every gift has a consequence.",
     weight: 4,
     choices: [
-      { id: "harvest-moonpetals", icon: "🌸", label: "RISKY • 💠 2", title: "Harvest moonpetals", description: "Gain 55 petals and 2 Dewshards. Receive the Moonbloom Covenant. The next wave has 35% more health.", resultMessage: "The Moonbloom Covenant blesses this run with 5 extra petals per clear.", effects: [{ type: "petals", amount: 55 }, { type: "dewshards", amount: 2 }, { type: "blessing", blessingId: "harvest", amount: 1 }, { type: "nextWave", hpMultiplier: 1.35, extraEnemies: 0, petalBonus: 25, note: "Gloomblessing: enemies have 35% more health • +25 clear reward" }] },
-      { id: "listen-to-spring", icon: "💧", label: "SAFE • 💠 1", title: "Listen to the echoing spring", description: "Gain 1 Dewshard and an additional copy of your selected guardian.", resultMessage: "The Echoing Spring created one additional {guardian} copy for this run.", effects: [{ type: "dewshards", amount: 1 }, { type: "guardianCopy", target: "selected", amount: 1 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 0, petalBonus: 0, note: "{guardian}'s echo: +1 placeable copy • normal enemy strength" }] },
-      { id: "make-root-pact", icon: "🌳", label: "TACTICAL • 💠 1", title: "Make a root pact", description: "Heal 2 objective health, gain 1 Dewshard, and receive the Oath of the Deep Roots. Face 3 extra enemies next wave.", resultMessage: "The Oath of the Deep Roots strengthens every guardian.", effects: [{ type: "heal", amount: 2 }, { type: "dewshards", amount: 1 }, { type: "blessing", blessingId: "warden", amount: 1 }, { type: "runDamageMultiplier", multiplier: 1.05 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 3, petalBonus: 20, note: "Root pact: +2 Heart Tree health • 3 extra enemies • +20 clear reward" }] },
+      { id: "harvest-moonpetals", icon: "💠", label: "RISKY • 💠 2", title: "Gather moonlit dew", description: "Gain 2 Dewshards. The next wave has 35% more health.", resultMessage: "Moonlit dew gathers into two bright Dewshards.", effects: [{ type: "dewshards", amount: 2 }, { type: "nextWave", hpMultiplier: 1.35, extraEnemies: 0, note: "Moonlit trial: enemies have 35% more health" }] },
+      { id: "listen-to-spring", icon: "💧", label: "SAFE • 💠 1", title: "Listen to the echoing spring", description: "Gain 1 Dewshard and an additional copy of your selected guardian.", resultMessage: "The Echoing Spring created one additional {guardian} copy for this run.", effects: [{ type: "dewshards", amount: 1 }, { type: "guardianCopy", target: "selected", amount: 1 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 0, note: "{guardian}'s echo: +1 placeable copy • normal enemy strength" }] },
+      { id: "make-root-pact", icon: "🌳", label: "TACTICAL • 💠 1", title: "Make a root pact", description: "Heal 2 objective health, gain 1 Dewshard, and receive the Oath of the Deep Roots. Face 3 extra enemies next wave.", resultMessage: "The Oath of the Deep Roots strengthens every guardian.", effects: [{ type: "heal", amount: 2 }, { type: "dewshards", amount: 1 }, { type: "blessing", blessingId: "warden", amount: 1 }, { type: "runDamageMultiplier", multiplier: 1.05 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 3, note: "Root pact: +2 Heart Tree health • 3 extra enemies" }] },
     ],
   },
   {
@@ -110,8 +109,8 @@ export const EVENTS: EventDefinition[] = [
     weight: 3,
     maxChapter: 2,
     choices: [
-      { id: "dance-for-petals", icon: "✨", label: "MERRY • 🌸 40", title: "Dance with the lanterns", description: "Gain 40 petals. Two curious gloomlings follow the music into the next wave.", resultMessage: "The mushroom lanterns scatter petals along your path.", effects: [{ type: "petals", amount: 40 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 2, petalBonus: 15, note: "Lantern procession: 2 extra enemies • +15 clear reward" }] },
-      { id: "drink-spore-dew", icon: "💧", label: "CURIOUS • 💠 1", title: "Drink the silver spore-dew", description: "Gain 1 Dewshard and another copy of your selected guardian.", resultMessage: "Silver dew forms an echo of {guardian}.", effects: [{ type: "dewshards", amount: 1 }, { type: "guardianCopy", target: "selected", amount: 1 }, { type: "nextWave", hpMultiplier: 1.1, extraEnemies: 0, petalBonus: 10, note: "Spore-dew dream: +1 {guardian} copy • enemies have 10% more health" }] },
+      { id: "dance-for-petals", icon: "✨", label: "MERRY • 💠 1", title: "Dance with the lanterns", description: "Gain 1 Dewshard. Two curious gloomlings follow the music into the next wave.", resultMessage: "The mushroom lanterns leave a bead of silver dew behind.", effects: [{ type: "dewshards", amount: 1 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 2, note: "Lantern procession: 2 extra enemies" }] },
+      { id: "drink-spore-dew", icon: "💧", label: "CURIOUS • 💠 1", title: "Drink the silver spore-dew", description: "Gain 1 Dewshard and another copy of your selected guardian.", resultMessage: "Silver dew forms an echo of {guardian}.", effects: [{ type: "dewshards", amount: 1 }, { type: "guardianCopy", target: "selected", amount: 1 }, { type: "nextWave", hpMultiplier: 1.1, extraEnemies: 0, note: "Spore-dew dream: +1 {guardian} copy • enemies have 10% more health" }] },
     ],
   },
   {
@@ -122,8 +121,8 @@ export const EVENTS: EventDefinition[] = [
     weight: 2,
     minChapter: 2,
     choices: [
-      { id: "split-starlight", icon: "⚡", label: "POWER • 💠 2", title: "Split the starlight", description: "Gain 2 Dewshards and permanently increase guardian damage by 5%. The next wave has 3 extra enemies.", resultMessage: "Starlight settles into every guardian's heart.", effects: [{ type: "dewshards", amount: 2 }, { type: "blessing", blessingId: "warden", amount: 1 }, { type: "runDamageMultiplier", multiplier: 1.05 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 3, petalBonus: 20, note: "Starwake: +5% guardian damage • 3 extra enemies • +20 clear reward" }] },
-      { id: "reflect-guardian", icon: "🪞", label: "ECHO • 💠 1", title: "Show it your guardian", description: "Gain 1 Dewshard and another copy of your selected guardian. The next wave is normal.", resultMessage: "The star remembers {guardian} and creates a luminous echo.", effects: [{ type: "dewshards", amount: 1 }, { type: "guardianCopy", target: "selected", amount: 1 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 0, petalBonus: 0, note: "Starlit echo: +1 {guardian} copy • normal enemy strength" }] },
+      { id: "split-starlight", icon: "⚡", label: "POWER • 💠 2", title: "Split the starlight", description: "Gain 2 Dewshards and permanently increase guardian damage by 5%. The next wave has 3 extra enemies.", resultMessage: "Starlight settles into every guardian's heart.", effects: [{ type: "dewshards", amount: 2 }, { type: "blessing", blessingId: "warden", amount: 1 }, { type: "runDamageMultiplier", multiplier: 1.05 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 3, note: "Starwake: +5% guardian damage • 3 extra enemies" }] },
+      { id: "reflect-guardian", icon: "🪞", label: "ECHO • 💠 1", title: "Show it your guardian", description: "Gain 1 Dewshard and another copy of your selected guardian. The next wave is normal.", resultMessage: "The star remembers {guardian} and creates a luminous echo.", effects: [{ type: "dewshards", amount: 1 }, { type: "guardianCopy", target: "selected", amount: 1 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 0, note: "Starlit echo: +1 {guardian} copy • normal enemy strength" }] },
     ],
   },
   {
@@ -134,8 +133,8 @@ export const EVENTS: EventDefinition[] = [
     weight: 1,
     minChapter: 3,
     choices: [
-      { id: "ring-the-bell", icon: "🔔", label: "DARING • 🌸 70", title: "Ring the hollow bell", description: "Gain 70 petals and 2 Dewshards. The next wave has 50% more health.", resultMessage: "The bell wakes old treasure—and something deeper in the Gloom.", effects: [{ type: "petals", amount: 70 }, { type: "dewshards", amount: 2 }, { type: "nextWave", hpMultiplier: 1.5, extraEnemies: 0, petalBonus: 30, note: "Hollow toll: enemies have 50% more health • +30 clear reward" }] },
-      { id: "muffle-the-bell", icon: "🌿", label: "CAREFUL • HEAL 4", title: "Muffle it with living vines", description: "Heal 4 objective health. The next wave has one extra enemy.", resultMessage: "The canopy quiets, and the Heart Tree breathes easier.", effects: [{ type: "heal", amount: 4 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 1, petalBonus: 5, note: "Quiet canopy: +4 health • 1 extra enemy • +5 clear reward" }] },
+      { id: "ring-the-bell", icon: "🔔", label: "DARING • 💠 2", title: "Ring the hollow bell", description: "Gain 2 Dewshards. The next wave has 50% more health.", resultMessage: "The bell wakes old power—and something deeper in the Gloom.", effects: [{ type: "dewshards", amount: 2 }, { type: "nextWave", hpMultiplier: 1.5, extraEnemies: 0, note: "Hollow toll: enemies have 50% more health" }] },
+      { id: "muffle-the-bell", icon: "🌿", label: "CAREFUL • HEAL 4", title: "Muffle it with living vines", description: "Heal 4 objective health. The next wave has one extra enemy.", resultMessage: "The canopy quiets, and the Heart Tree breathes easier.", effects: [{ type: "heal", amount: 4 }, { type: "nextWave", hpMultiplier: 1, extraEnemies: 1, note: "Quiet canopy: +4 health • 1 extra enemy" }] },
     ],
   },
 ];
@@ -186,8 +185,13 @@ export function choicesForEvent(event: EventDefinition, unplacedGuardians: Critt
   return [...sendChoices, ...event.choices];
 }
 
-export function tierTwoAidReward(seed: number, chapter: number, wave: number, guardianId = "") {
-  const candidates = CRITTERS.filter(critter => critter.tier === 2 && critter.evolutionPath === "core");
+export function eligibleAidTierTwoGuardians(ownedIds: string[], guardianForms: Record<string, number>) {
+  return CRITTERS.filter(critter => critter.tier === 2 && ownedIds.includes(critter.id) && (guardianForms[critter.id] || 0) === 0);
+}
+
+export function tierTwoAidReward(seed: number, chapter: number, wave: number, guardianId: string, candidateIds: string[]) {
+  const candidates = CRITTERS.filter(critter => critter.tier === 2 && candidateIds.includes(critter.id));
+  if (!candidates.length) return null;
   let state = (seed ^ Math.imul(chapter, 0x9e3779b9) ^ Math.imul(wave, 0x85ebca6b)) >>> 0;
   for (const character of guardianId) state = Math.imul(state ^ character.charCodeAt(0), 16777619) >>> 0;
   return candidates[state % candidates.length];

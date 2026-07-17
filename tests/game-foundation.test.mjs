@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { BOARD_SIZE, CHAPTERS, CRITTERS } from "../app/game/content.ts";
+import { ENEMY_BY_ID, ENEMY_DEFINITIONS } from "../app/game/enemies.ts";
 import { cellPoint, generateChapterPath, pathProgressPoint, pathRouteClass } from "../app/game/map.ts";
 
 const corners = new Set([0, BOARD_SIZE - 1, BOARD_SIZE * (BOARD_SIZE - 1), BOARD_SIZE * BOARD_SIZE - 1]);
@@ -61,4 +62,11 @@ test("enemy path progress interpolates continuously between tile centres", () =>
   assert.deepEqual(pathProgressPoint(path, 0.5), { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 });
   assert.deepEqual(pathProgressPoint(path, 1.5), { x: (second.x + third.x) / 2, y: (second.y + third.y) / 2 });
   assert.deepEqual(pathProgressPoint(path, 99), third);
+});
+
+test("defeated enemies have explicit petal rewards", () => {
+  for (const enemy of ENEMY_DEFINITIONS) assert.ok(enemy.petalReward >= 0, `${enemy.id} must have a non-negative petal reward`);
+  assert.equal(ENEMY_BY_ID.gloomling.petalReward, 1);
+  assert.equal(ENEMY_BY_ID.gloomlet.petalReward, 0, "split offspring must not duplicate rewards");
+  assert.ok(ENEMY_BY_ID.thornmaw.petalReward > ENEMY_BY_ID.gloomling.petalReward);
 });

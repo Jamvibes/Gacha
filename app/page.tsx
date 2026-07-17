@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats, rootCritterId } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
 import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
-import { EVENT_BY_ID, choicesForEvent, formatEventText, selectPooledEvent, selectScheduledEvent, tierTwoAidReward } from "./game/events";
+import { EVENT_BY_ID, choicesForEvent, eligibleAidTierTwoGuardians, formatEventText, selectPooledEvent, selectScheduledEvent, tierTwoAidReward } from "./game/events";
 import { FACTION_BONDS, FACTION_BY_ID, FACTIONS, getFactionBondStates } from "./game/factions";
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
 import { getEnemyStatuses } from "./game/enemy-statuses";
@@ -72,9 +72,10 @@ export default function Home() {
   const spawnQueue = useRef<EnemyId[]>([]);
   const spawnTimer = useRef(0);
   const starterEffectTick = useRef(0);
+  const rewardedEnemyIds = useRef(new Set<number>());
+  const pendingKillPetals = useRef(0);
   const waveHpMultiplier = useRef(1);
   const waveExtraEnemies = useRef(0);
-  const wavePetalBonus = useRef(0);
   const runDamageMultiplier = useRef(1);
   const activeChapter = CHAPTERS[chapter - 1];
   const activePath = useMemo(() => generateChapterPath(mapSeed, chapter, mapVersion), [mapSeed, chapter, mapVersion]);
@@ -94,7 +95,6 @@ export default function Home() {
       restoreRun(restored);
       waveHpMultiplier.current = restored.waveHpMultiplier;
       waveExtraEnemies.current = restored.waveExtraEnemies;
-      wavePetalBonus.current = restored.wavePetalBonus;
       runDamageMultiplier.current = restored.runDamageMultiplier;
       setMessage(restored.wave ? `Saved run restored after Chapter ${restored.chapter}, Wave ${restored.wave}.` : `Saved run restored in Chapter ${restored.chapter}.`);
     }
@@ -230,6 +230,10 @@ export default function Home() {
         });
         if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: Math.max(1, t.critter.speed - starterAttackSpeedBonus(starterId)) } : t));
         const splitChildren: Enemy[] = [];
+        for (const defeated of next.filter(enemy => enemy.hp <= 0 && !rewardedEnemyIds.current.has(enemy.id))) {
+          rewardedEnemyIds.current.add(defeated.id);
+          pendingKillPetals.current += ENEMY_BY_ID[defeated.definitionId as EnemyId].petalReward;
+        }
         next.forEach(parent => {
           const children = createSplitOffspring(parent, () => enemyId.current++, difficultyWave, chapter, waveHpMultiplier.current);
           if (children.length) addEnemyEffect(activePath[Math.min(activePath.length - 1, Math.floor(parent.step))], "splitBurst", ENEMY_BY_ID[parent.definitionId as EnemyId].color);
@@ -242,15 +246,21 @@ export default function Home() {
   }, [running, towers, wave, starterId, paused, chapter, activeChapter, activePath, gameSpeed, factionBonds, waveDamageMultiplier, gameMode, mapSeed]);
 
   useEffect(() => {
+    if (pendingKillPetals.current <= 0) return;
+    const earned = pendingKillPetals.current;
+    pendingKillPetals.current = 0;
+    setPetals(current => current + earned);
+  }, [enemies]);
+
+  useEffect(() => {
     if (running && spawnQueue.current.length === 0 && enemies.length === 0) {
       const bossCleared = gameMode === "endless" ? isEndlessBossWave(wave) : wave === WAVES_PER_CHAPTER;
-      const reward = bossCleared ? 100 + chapter * 50 + wavePetalBonus.current + blessings.harvest * 5 : 18 + wave * 3 + chapter * 5 + wavePetalBonus.current + blessings.harvest * 5;
+      const reward = bossCleared ? 100 + chapter * 50 : 18 + wave * 3 + chapter * 5;
       setRunning(false);
       setPetals(p => p + reward);
       setMessage(bossCleared ? `${activeChapter.bossName} was defeated! Choose a relic before the journey continues.` : `Wave ${wave} cleared! Your critters found ${reward} petals.`);
       if (gameMode === "endless") setEndlessHighWave(best => Math.max(best, wave));
       if (starterId) setStats(current => ({ ...current, [starterId]: { ...current[starterId], wavesCleared: current[starterId].wavesCleared + 1, bossesDefeated: current[starterId].bossesDefeated + (bossCleared ? 1 : 0), highestChapter: Math.max(current[starterId].highestChapter, chapter) } }));
-      wavePetalBonus.current = 0;
       let choices: Critter[] = [];
       let eventId: string | null = null;
       const eventContext = { chapter, wave, seed: mapSeed, recentEventIds, resolvedEventIds, unplacedGuardianIds: unplacedGuardians.map(critter => critter.id) };
@@ -265,7 +275,7 @@ export default function Home() {
       if (!bossCleared && !eventId && !choices.length) eventId = selectPooledEvent(eventContext)?.id ?? null;
       finishRunWave(bossCleared, choices, eventId);
     }
-  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, blessings.harvest, starterId, owned, mapSeed, recentEventIds, resolvedEventIds, unplacedGuardians, gameMode]);
+  }, [enemies, running, wave, runUnlocked, chapter, activeChapter, starterId, owned, mapSeed, recentEventIds, resolvedEventIds, unplacedGuardians, gameMode]);
 
   useEffect(() => {
     if (lives <= 0) { setRunning(false); spawnQueue.current = []; setMessage("The gloom reached the Heart Tree. Regroup and try again!"); }
@@ -273,7 +283,15 @@ export default function Home() {
 
   const selectedCritter = CRITTERS.find(c => c.id === selected)!;
   const activeEvent = activeEventId ? EVENT_BY_ID[activeEventId] : null;
-  const activeEventChoices = activeEvent ? choicesForEvent(activeEvent, unplacedGuardians) : [];
+  const aidTierTwoCandidates = useMemo(() => eligibleAidTierTwoGuardians(owned, guardianForms), [owned, guardianForms]);
+  const aidFallbackEvent = activeEventId === "aid-answered" && aidTierTwoCandidates.length === 0;
+  const activeEventChoices = activeEvent ? choicesForEvent(activeEvent, unplacedGuardians).map(choice => aidFallbackEvent && choice.id === "welcome-reinforcements" ? {
+    ...choice,
+    icon: "💠",
+    label: "WHAT THEY COULD SEND",
+    title: "Accept 2 Dewshards",
+    description: "Your messenger returns safely with 2 Dewshards gathered by those who answered the call.",
+  } : choice) : [];
   const ownedCritters = useMemo(() => CRITTERS.filter(c => owned.includes(c.id)), [owned]);
   const runCritters = useMemo(() => CRITTERS
     .filter(critter => (guardianForms[critter.id] || 0) > 0)
@@ -344,7 +362,7 @@ export default function Home() {
       gameSpeed,
       waveHpMultiplier: waveHpMultiplier.current,
       waveExtraEnemies: waveExtraEnemies.current,
-      wavePetalBonus: wavePetalBonus.current,
+      wavePetalBonus: 0,
       runDamageMultiplier: runDamageMultiplier.current,
     });
   }
@@ -383,19 +401,19 @@ export default function Home() {
     const sentGuardian = choice.effects.find(effect => effect.type === "sendGuardian");
     const messenger = CRITTERS.find(critter => critter.id === (sentGuardian?.type === "sendGuardian" ? sentGuardian.guardianId : aidMission?.guardianId));
     const eventGuardianName = messenger?.name ?? selectedCritter.name;
-    const reward = choice.effects.some(effect => effect.type === "randomTierGuardian") ? tierTwoAidReward(mapSeed, chapter, wave, aidMission?.guardianId) : null;
+    const reward = choice.effects.some(effect => effect.type === "randomTierGuardian") ? tierTwoAidReward(mapSeed, chapter, wave, aidMission?.guardianId ?? "", aidTierTwoCandidates.map(critter => critter.id)) : null;
     resolveRunEvent(choice, eventGuardianName, reward?.id);
     for (const effect of choice.effects) {
-      if (effect.type === "petals") setPetals(petals => Math.max(0, petals + effect.amount));
       if (effect.type === "heal") addCombatNumber(activePath[activePath.length - 1], effect.amount, "heal");
       if (effect.type === "runDamageMultiplier") runDamageMultiplier.current *= effect.multiplier;
       if (effect.type === "nextWave") {
         waveHpMultiplier.current = effect.hpMultiplier;
         waveExtraEnemies.current = effect.extraEnemies;
-        wavePetalBonus.current = effect.petalBonus;
       }
     }
-    setMessage(formatEventText(choice.resultMessage, eventGuardianName, reward?.name));
+    setMessage(reward || !choice.effects.some(effect => effect.type === "randomTierGuardian")
+      ? formatEventText(choice.resultMessage, eventGuardianName, reward?.name)
+      : `${eventGuardianName} returns safely. Every unlocked Tier 2 guardian has already joined this run, so the call brings back 2 Dewshards instead.`);
   }
 
   function chooseBossReward(reward: BossReward) {
@@ -411,8 +429,6 @@ export default function Home() {
       setStarCharmCount(count => count + 1);
       setMessage("Astral Guardian's Grace grants every guardian 25% more damage for this run.");
     }
-    setPetals(p => p + (gameMode === "campaign" && chapter === CHAPTERS.length ? 150 : 75));
-
     if (gameMode === "endless") {
       const nextChapter = chapter % CHAPTERS.length + 1;
       enterEndlessRegion(nextChapter);
@@ -421,7 +437,6 @@ export default function Home() {
       spawnQueue.current = [];
       waveHpMultiplier.current = 1;
       waveExtraEnemies.current = 0;
-      wavePetalBonus.current = 0;
       window.setTimeout(() => setMessage(`Endless Wave ${wave + 1} awaits in ${CHAPTERS[nextChapter - 1].region}. Re-place your guardians and continue!`), 0);
       return;
     }
@@ -435,7 +450,6 @@ export default function Home() {
       spawnQueue.current = [];
       waveHpMultiplier.current = 1;
       waveExtraEnemies.current = 0;
-      wavePetalBonus.current = 0;
       window.setTimeout(() => setMessage(`Chapter ${nextChapter.number}: ${nextChapter.region}. Place your guardians for the road ahead!`), 0);
     } else {
       completeRun();
@@ -455,6 +469,8 @@ export default function Home() {
     spawnQueue.current = [...plan.enemyIds];
     spawnTimer.current = 0;
     starterEffectTick.current = 0;
+    rewardedEnemyIds.current.clear();
+    pendingKillPetals.current = 0;
     setRunning(true);
     const bossWave = gameMode === "endless" ? isEndlessBossWave(next) : next === WAVES_PER_CHAPTER;
     setMessage(bossWave ? `${activeChapter.bossName} has appeared—the boss battle begins!` : `Wave ${next} is rustling through ${activeChapter.region}…`);
@@ -482,18 +498,18 @@ export default function Home() {
     resetRun();
     setEnemies([]);
     setRunning(false); setPaused(false); setSettingsOpen(false); setAttackFx([]); setCombatNumbers([]); setEnemyEffects([]); setHoveredEnemyId(null); setInspectedTowerSlot(null);
-    spawnQueue.current = []; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; wavePetalBonus.current = 0; runDamageMultiplier.current = 1;
+    spawnQueue.current = []; waveHpMultiplier.current = 1; waveExtraEnemies.current = 0; runDamageMultiplier.current = 1;
     setMessage("Choose a starter for your new adventure.");
   }
 
   function summon() {
     if (petals < 100) { setMessage("You need 100 petals for a new friendship."); return; }
     setPetals(p => p - 100);
-    const pool = CRITTERS.filter(c => c.wishOnly && (c.tier === 1 || (c.tier === 2 && c.evolutionPath === "alternative" && (!c.upgradeOf || owned.includes(c.upgradeOf)))));
+    const pool = CRITTERS.filter(c => !owned.includes(c.id) && c.wishOnly && (c.tier === 1 || (c.tier === 2 && c.evolutionPath === "alternative" && (!c.upgradeOf || owned.includes(c.upgradeOf)))));
     const pick = pool[Math.floor(Math.random() * pool.length)];
     if (!pick) { setPetals(p => p + 100); setMessage("The pond is quiet. More base guardians will arrive in a future update."); return; }
     setSummoned(pick);
-    if (!owned.includes(pick.id)) setOwned(o => [...o, pick.id]); else setPetals(p => p + 35);
+    setOwned(o => [...o, pick.id]);
   }
 
   return (
@@ -594,8 +610,8 @@ export default function Home() {
         {eventOpen && activeEvent && <div className="choiceOverlay eventOverlay" role="dialog" aria-modal="true" aria-labelledby="event-title">
           <section className="choicePanel eventPanel">
             <span className="eventIcon">{activeEvent.icon}</span><span className="eyebrow">BETWEEN THE WAVES</span>
-            <h1 id="event-title">{activeEvent.title}</h1>
-            <p>{activeEvent.description}</p>
+            <h1 id="event-title">{aidFallbackEvent ? "They've sent what they could" : activeEvent.title}</h1>
+            <p>{aidFallbackEvent ? "No new Tier 2 guardians are able to answer, but your messenger returns safely with a small offering." : activeEvent.description}</p>
             <div className="eventChoices">
               {activeEventChoices.map(choice => <button key={choice.id} onClick={() => chooseEvent(choice)}><span>{choice.icon}</span><div><small>{choice.label}</small><b>{choice.title}</b><p>{formatEventText(choice.description, selectedCritter.name)}</p></div></button>)}
             </div>
@@ -617,11 +633,11 @@ export default function Home() {
           <section className="choicePanel bossPanel">
             <span className="bossCrown">🏆</span><span className="eyebrow">{gameMode === "endless" ? `ENDLESS WAVE ${wave} CLEARED` : `CHAPTER ${chapter} BOSS DEFEATED`}</span>
             <h1 id="boss-reward-title">Choose a relic from {activeChapter.bossName}</h1>
-            <p>{gameMode === "endless" ? `Your reward travels into Wave ${wave + 1} and the next generated region.` : chapter < CHAPTERS.length ? `Your reward will travel with you into Chapter ${chapter + 1}.` : "Choose your final treasure to complete this three-chapter adventure."} Every choice also grants bonus petals.</p>
+            <p>{gameMode === "endless" ? `Your reward travels into Wave ${wave + 1} and the next generated region.` : chapter < CHAPTERS.length ? `Your reward will travel with you into Chapter ${chapter + 1}.` : "Choose your final treasure to complete this three-chapter adventure."}</p>
             <div className="eventChoices bossChoices">
-              <button onClick={() => chooseBossReward("heartseed")}><span>🌱</span><div><small>FORTIFY</small><b>Ancient Heartseed</b><p>Restore 5 objective health and gain {gameMode === "campaign" && chapter === CHAPTERS.length ? 150 : 75} petals.</p></div></button>
-              <button onClick={() => chooseBossReward("embercore")}><span>🔥</span><div><small>MULTIPLY</small><b>Twinflame Totem</b><p>Gain one additional copy of every guardian in your roster and {gameMode === "campaign" && chapter === CHAPTERS.length ? 150 : 75} petals.</p></div></button>
-              <button onClick={() => chooseBossReward("starcharm")}><span>⭐</span><div><small>EMPOWER</small><b>Star Charm</b><p>Guardians deal 25% more damage for this run and you gain {gameMode === "campaign" && chapter === CHAPTERS.length ? 150 : 75} petals.</p></div></button>
+              <button onClick={() => chooseBossReward("heartseed")}><span>🌱</span><div><small>FORTIFY</small><b>Ancient Heartseed</b><p>Restore 5 objective health.</p></div></button>
+              <button onClick={() => chooseBossReward("embercore")}><span>🔥</span><div><small>MULTIPLY</small><b>Twinflame Totem</b><p>Gain one additional copy of every guardian in your roster.</p></div></button>
+              <button onClick={() => chooseBossReward("starcharm")}><span>⭐</span><div><small>EMPOWER</small><b>Star Charm</b><p>Guardians deal 25% more damage for this run.</p></div></button>
             </div>
           </section>
         </div>}
@@ -704,7 +720,7 @@ export default function Home() {
 
       {tab === "summon" && <section className="summonPage">
         <div className="pondScene"><div className="stars">✦　·　✧　·　✦</div><div className="moon">☾</div><div className="pond">{summoned ? <div className="reveal" style={{"--accent":summoned.color} as React.CSSProperties}><CritterArt critter={summoned}/><small>Tier {summoned.tier} {summoned.evolutionPath === "alternative" ? "alternative form" : "friend"}</small><h2>{summoned.name}</h2><p>{summoned.skill}</p></div> : <><span>✧</span><b>The Wish Pond</b><small>Make a wish and meet a woodland guardian</small></>}</div></div>
-        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>The Wish Pond unlocks new Tier 1 guardians and alternative Tier 2 forms. After an alternative form is discovered, it appears beside the normal evolution when you select its placed Tier 1 guardian. Normal evolutions never require a Wish Pond unlock. Duplicates return 35 petals.</p><div className="odds"><span>Tier 1 guardians <b>Base forms</b></span><span>Alternative Tier 2 <b>Wish unlocks</b></span></div><small className="futurePath">Alternative forms are balanced sidegrades with different strengths, not automatic replacements.</small><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
+        <div className="wishPanel"><span className="eyebrow">A NEW FRIEND AWAITS</span><h1>Offer petals to the pond</h1><p>The Wish Pond unlocks new Tier 1 guardians and alternative Tier 2 forms. After an alternative form is discovered, it appears beside the normal evolution when you select its placed Tier 1 guardian. Normal evolutions never require a Wish Pond unlock. The pond only draws guardians you have not discovered yet.</p><div className="odds"><span>Tier 1 guardians <b>Base forms</b></span><span>Alternative Tier 2 <b>Wish unlocks</b></span></div><small className="futurePath">Alternative forms are balanced sidegrades with different strengths, not automatic replacements.</small><button className="primary wish" onClick={summon}>Wish for a friend <span>🌸 100</span></button><small>You have 🌸 {petals} petals</small></div>
       </section>}
       <footer><span>Prototype meadow • Progress saves on this device</span><span>Made with a little magic ✦</span></footer>
     </main>
