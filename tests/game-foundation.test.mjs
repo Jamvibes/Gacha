@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { BOARD_SIZE, CHAPTERS, CRITTERS } from "../app/game/content.ts";
-import { generateChapterPath, pathRouteClass } from "../app/game/map.ts";
+import { cellPoint, generateChapterPath, pathProgressPoint, pathRouteClass } from "../app/game/map.ts";
 
 const corners = new Set([0, BOARD_SIZE - 1, BOARD_SIZE * (BOARD_SIZE - 1), BOARD_SIZE * BOARD_SIZE - 1]);
 
@@ -50,4 +50,15 @@ test("zero seed retains each chapter's authored fallback map", () => {
   for (const chapter of CHAPTERS) {
     assert.deepEqual(generateChapterPath(0, chapter.number), chapter.path);
   }
+});
+
+test("enemy path progress interpolates continuously between tile centres", () => {
+  const path = [0, 1, 9];
+  const first = cellPoint(0);
+  const second = cellPoint(1);
+  const third = cellPoint(9);
+  assert.deepEqual(pathProgressPoint(path, 0), first);
+  assert.deepEqual(pathProgressPoint(path, 0.5), { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 });
+  assert.deepEqual(pathProgressPoint(path, 1.5), { x: (second.x + third.x) / 2, y: (second.y + third.y) / 2 });
+  assert.deepEqual(pathProgressPoint(path, 99), third);
 });
