@@ -21,6 +21,8 @@ export type Critter = {
   upgradeOf?: string;
   evolutionPath?: "core" | "alternative";
   sprite?: string;
+  burnDamageTakenMultiplier?: number;
+  criticalDamageMultiplier?: number;
 };
 
 export type Enemy = {

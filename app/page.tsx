@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats, rootCritterId } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
-import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
+import { BASE_CRITICAL_CHANCE, burnDamageMultiplierForEnemy, burnEffect, calculateHitDamage, criticalChanceBonus, guardianCriticalDamageMultiplier, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
 import { EVENT_BY_ID, choicesForEvent, eligibleAidTierTwoGuardians, formatEventText, selectPooledEvent, selectScheduledEvent, tierTwoAidReward } from "./game/events";
 import { FACTION_BONDS, FACTION_BY_ID, FACTIONS, getFactionBondStates } from "./game/factions";
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
@@ -130,7 +130,7 @@ export default function Home() {
       setEnemies(current => {
         let next = current.map(e => {
           const burning = (e.burnTicks || 0) > 0;
-          const burnDamage = burning ? e.burnDamage || 0 : 0;
+          const burnDamage = burning ? Math.round((e.burnDamage || 0) * burnDamageMultiplierForEnemy(e, towers, activePath, starterRangeBonus(starterId))) : 0;
           const currentCell = activePath[Math.min(activePath.length - 1, Math.floor(e.step))];
           if (burnDamage) addCombatNumber(currentCell, burnDamage, "damage");
           const shieldDamage = Math.min(e.shield, burnDamage);
@@ -209,7 +209,7 @@ export default function Home() {
               const piercing = t.critter.ability === "piercing";
               const piercingBonus = piercing && hit.enemy.shield > 0 ? 1 + abilityRank * 0.15 : 1;
               const critical = rollCritical(Math.random, t.critter.faction === "starborn" ? criticalChanceBonus(bondLevel) : 0);
-              const criticalMultiplier = piercing ? starterPiercingCriticalMultiplier(starterId) : CRITICAL_DAMAGE_MULTIPLIER;
+              const criticalMultiplier = guardianCriticalDamageMultiplier(t.critter, starterPiercingCriticalMultiplier(starterId));
               const damage = calculateHitDamage(baseDamage, hit.multiplier, critical, piercingBonus, criticalMultiplier);
               const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(hit.enemy.step))];
               if (piercing) {
@@ -659,7 +659,7 @@ export default function Home() {
               <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * starterDamageMultiplier(starterId) * runDamageMultiplier.current * waveDamageMultiplier)}</b></span>
               <span><small>RANGE</small><b>{inspectedTower.critter.range + starterRangeBonus(starterId)} tiles</b></span>
               <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - starterAttackSpeedBonus(starterId)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
-              <span><small>CRITICAL CHANCE</small><b>{Math.round(BASE_CRITICAL_CHANCE * 100)}% • ×{inspectedTower.critter.ability === "piercing" ? starterPiercingCriticalMultiplier(starterId) : CRITICAL_DAMAGE_MULTIPLIER} damage</b></span>
+              <span><small>CRITICAL CHANCE</small><b>{Math.round(BASE_CRITICAL_CHANCE * 100)}% • ×{guardianCriticalDamageMultiplier(inspectedTower.critter, starterPiercingCriticalMultiplier(starterId))} damage</b></span>
             </div>
             <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>
             {inspectedEvolutions.length ? <div className="evolutionButtons">{inspectedEvolutions.map(evolution => <button key={evolution.id} className="upgradeButton" onClick={() => evolveTower(evolution)}>{evolution.evolutionPath === "alternative" ? "Alternative: " : ""}Evolve into {evolution.name} • 💠 {inspectedTower.critter.tier === 1 ? 1 : 2}</button>)}</div> : <button className="upgradeButton" disabled>Final evolution reached</button>}

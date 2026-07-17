@@ -1,5 +1,5 @@
 import { BOARD_SIZE } from "./content.ts";
-import type { AbilityId, Enemy } from "./types.ts";
+import type { AbilityId, Critter, Enemy, Tower } from "./types.ts";
 import type { FactionBondLevel } from "./factions.ts";
 
 export const BASE_CRITICAL_CHANCE = 0.1;
@@ -53,6 +53,10 @@ export function calculateHitDamage(baseDamage: number, hitMultiplier: number, cr
   return Math.round(baseDamage * hitMultiplier * piercingBonus * (critical ? criticalMultiplier : 1));
 }
 
+export function guardianCriticalDamageMultiplier(critter: Critter, piercingStarterMultiplier = CRITICAL_DAMAGE_MULTIPLIER) {
+  return Math.max(CRITICAL_DAMAGE_MULTIPLIER, critter.criticalDamageMultiplier ?? CRITICAL_DAMAGE_MULTIPLIER, critter.ability === "piercing" ? piercingStarterMultiplier : CRITICAL_DAMAGE_MULTIPLIER);
+}
+
 export function pushBackDistance(tier: 1 | 2 | 3, boss = false, bondLevel: FactionBondLevel = 0) {
   const distance = (0.75 + (tier - 1) * 0.35) * (1 + bondLevel * 0.25);
   return boss ? distance * 0.5 : distance;
@@ -65,6 +69,15 @@ export function burnEffect(baseDamage: number, tier: 1 | 2 | 3, bondLevel: Facti
     damage: Math.round(baseDamage * (0.2 + rank * 0.05)),
     spreadMultiplier: bondLevel === 2 ? 0.5 : 0,
   };
+}
+
+export function burnDamageMultiplierForEnemy(enemy: Enemy, towers: Tower[], path: number[], rangeBonus = 0) {
+  const enemyCell = path[Math.min(path.length - 1, Math.floor(enemy.step))];
+  return towers.reduce((strongest, tower) => {
+    const multiplier = tower.critter.burnDamageTakenMultiplier;
+    if (!multiplier || cellDistance(enemyCell, tower.slot) > tower.critter.range + rangeBonus + 0.65) return strongest;
+    return Math.max(strongest, multiplier);
+  }, 1);
 }
 
 export function selectBurnSpreadTarget(enemies: Enemy[], primary: Enemy, path: number[]) {

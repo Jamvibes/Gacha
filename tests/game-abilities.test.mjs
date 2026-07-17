@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "../app/game/abilities.ts";
+import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnDamageMultiplierForEnemy, burnEffect, calculateHitDamage, criticalChanceBonus, guardianCriticalDamageMultiplier, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "../app/game/abilities.ts";
 import { CRITTERS } from "../app/game/content.ts";
 import { FACTION_BY_ID, FACTIONS, factionBondLevel, getFactionBondStates } from "../app/game/factions.ts";
 
@@ -99,6 +99,29 @@ test("critical hits use the shared chance and damage multiplier", () => {
   assert.equal(rollCritical(() => 0.19, criticalChanceBonus(2)), true);
   assert.equal(calculateHitDamage(20, 0.65, true), 26);
   assert.equal(calculateHitDamage(20, 1, true, 1, 2.5), 50);
+});
+
+test("new faction guardians have distinct specialist profiles", () => {
+  const coalroll = CRITTERS.find(critter => critter.id === "coalroll");
+  const ziphummer = CRITTERS.find(critter => critter.id === "ziphummer");
+  const astralynx = CRITTERS.find(critter => critter.id === "astralynx");
+  assert.equal(coalroll.range, 2);
+  assert.equal(coalroll.burnDamageTakenMultiplier, 1.25);
+  assert.equal(ziphummer.speed, 1);
+  assert.ok(ziphummer.damage < CRITTERS.find(critter => critter.id === "sparkit").damage);
+  assert.equal(guardianCriticalDamageMultiplier(astralynx), 2.5);
+});
+
+test("Coalroll strengthens burns only while enemies are inside its non-stacking aura", () => {
+  const coalroll = CRITTERS.find(critter => critter.id === "coalroll");
+  const path = [0, 1, 2, 3, 4, 5, 6, 7];
+  const target = enemy(1, 2);
+  const nearby = { slot: 8, sourceId: "coalroll", critter: coalroll, cooldown: 0 };
+  const secondNearby = { ...nearby, slot: 9 };
+  const distant = { ...nearby, slot: 63 };
+  assert.equal(burnDamageMultiplierForEnemy(target, [nearby], path), 1.25);
+  assert.equal(burnDamageMultiplierForEnemy(target, [nearby, secondNearby], path), 1.25);
+  assert.equal(burnDamageMultiplierForEnemy(target, [distant], path), 1);
 });
 
 test("push grows with tier and bosses resist half of it", () => {
