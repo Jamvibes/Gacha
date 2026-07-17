@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { BOARD_SIZE, CHAPTERS, CRITTERS, WAVES_PER_CHAPTER, emptyStarterStats, rootCritterId } from "./game/content";
 import { BLESSINGS } from "./game/blessings";
-import { BASE_CRITICAL_CHANCE, burnDamageMultiplierForEnemy, burnEffect, calculateHitDamage, criticalChanceBonus, guardianCriticalDamageMultiplier, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "./game/abilities";
+import { advanceFocusAttack, burnDamageMultiplierForEnemy, burnEffect, calculateHitDamage, guardianCriticalChance, guardianCriticalDamageMultiplier, pushBackDistance, rangeIndicatorDiameter, selectAbilityHits, selectBurnSpreadTarget, selectCriticalExtraTargets, slowEffect } from "./game/abilities";
 import { EVENT_BY_ID, choicesForEvent, eligibleAidTierTwoGuardians, formatEventText, selectPooledEvent, selectScheduledEvent, tierTwoAidReward } from "./game/events";
 import { FACTION_BONDS, FACTION_BY_ID, FACTIONS, getFactionBondStates } from "./game/factions";
 import { ENEMY_BY_ID, ENEMY_CODEX, ENEMY_SPRITES, applyHealerPulse, createEnemy, createSplitOffspring, type EnemyId } from "./game/enemies";
@@ -167,6 +167,7 @@ export default function Home() {
 
         const readyTowers = towers.filter(t => t.cooldown <= 0);
         const fired: number[] = [];
+        const focusUpdates = new Map<number, { focusTargetId: number; focusStacks: number; focusAttackProgress: number }>();
         readyTowers.forEach(t => {
           const slotCell = t.slot;
           const targets = next.filter(e => e.hp > 0 && (() => {
@@ -181,14 +182,15 @@ export default function Home() {
           if (target) {
             const starterBoost = starterDamageMultiplier(starterId);
             const baseDamage = Math.round(t.critter.damage * starterBoost * runDamageMultiplier.current * waveDamageMultiplier);
-            const abilityRank = t.critter.tier - 1;
+            const abilityTier = t.critter.abilityTierOverride ?? t.critter.tier;
+            const abilityRank = abilityTier - 1;
             const bondLevel = factionBonds[t.critter.faction].level;
-            const hits = selectAbilityHits(t.critter.ability, t.critter.tier, next, sortedTargets, target, activePath, bondLevel, {
+            const hits = selectAbilityHits(t.critter.ability, abilityTier, next, sortedTargets, target, activePath, bondLevel, {
               splashDamageMultiplier: starterSplashDamageMultiplier(starterId),
               chainDamageMultiplier: starterChainDamageMultiplier(starterId),
             });
             if (t.critter.ability === "burn") {
-              const effect = burnEffect(baseDamage, t.critter.tier, bondLevel);
+              const effect = burnEffect(baseDamage, abilityTier, bondLevel);
               target.burnTicks = Math.max(target.burnTicks || 0, effect.ticks);
               target.burnDamage = Math.max(target.burnDamage || 0, effect.damage);
               if (effect.spreadMultiplier) {
@@ -199,36 +201,53 @@ export default function Home() {
                 }
               }
             } else if (t.critter.ability === "slow") {
-              const effect = slowEffect(t.critter.tier, bondLevel, starterSlowDurationMultiplier(starterId));
+              const effect = slowEffect(abilityTier, bondLevel, starterSlowDurationMultiplier(starterId));
               target.slowTicks = Math.max(target.slowTicks || 0, effect.ticks);
               target.slowFactor = Math.max(target.slowFactor || 0, effect.factor);
             }
+            let attackCount = 1;
+            const focus = advanceFocusAttack(t.critter, target.id, t);
+            if (focus) {
+              attackCount += focus.bonusAttacks;
+              focusUpdates.set(t.slot, { focusTargetId: focus.focusTargetId, focusStacks: focus.focusStacks, focusAttackProgress: focus.focusAttackProgress });
+            }
             fired.push(t.slot);
             const newEffects: AttackFx[] = [];
-            hits.forEach(hit => {
-              const piercing = t.critter.ability === "piercing";
-              const piercingBonus = piercing && hit.enemy.shield > 0 ? 1 + abilityRank * 0.15 : 1;
-              const critical = rollCritical(Math.random, t.critter.faction === "starborn" ? criticalChanceBonus(bondLevel) : 0);
-              const criticalMultiplier = guardianCriticalDamageMultiplier(t.critter, starterPiercingCriticalMultiplier(starterId));
-              const damage = calculateHitDamage(baseDamage, hit.multiplier, critical, piercingBonus, criticalMultiplier);
-              const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(hit.enemy.step))];
-              if (piercing) {
-                hit.enemy.hp -= damage;
-              } else {
-                const shieldDamage = Math.min(hit.enemy.shield, damage);
-                hit.enemy.shield -= shieldDamage;
-                hit.enemy.hp -= damage - shieldDamage;
+            for (let attackIndex = 0; attackIndex < attackCount; attackIndex++) {
+              const queuedHits = hits.map(hit => ({ ...hit, forcedCritical: false }));
+              for (let hitIndex = 0; hitIndex < queuedHits.length; hitIndex++) {
+                const hit = queuedHits[hitIndex];
+                if (attackIndex > 0 && hit.enemy.hp <= 0) continue;
+                const piercing = t.critter.ability === "piercing";
+                const piercingBonus = piercing && hit.enemy.shield > 0 ? 1 + abilityRank * 0.15 : 1;
+                const critical = hit.forcedCritical || Math.random() < guardianCriticalChance(t.critter, bondLevel);
+                const criticalMultiplier = guardianCriticalDamageMultiplier(t.critter, starterPiercingCriticalMultiplier(starterId));
+                const damage = calculateHitDamage(baseDamage, hit.multiplier, critical, piercingBonus, criticalMultiplier);
+                const targetCell = activePath[Math.min(activePath.length - 1, Math.floor(hit.enemy.step))];
+                if (piercing) {
+                  hit.enemy.hp -= damage;
+                } else {
+                  const shieldDamage = Math.min(hit.enemy.shield, damage);
+                  hit.enemy.shield -= shieldDamage;
+                  hit.enemy.hp -= damage - shieldDamage;
+                }
+                if (critical && hit.enemy.id === target.id && t.critter.criticalExtraTargets) {
+                  selectCriticalExtraTargets(t.critter, target, sortedTargets).forEach(enemy => queuedHits.push({ enemy, multiplier: hit.multiplier, forcedCritical: true }));
+                }
+                const fxId = attackId.current++;
+                newEffects.push({ id: fxId, from: slotCell, to: targetCell, toPoint: pathProgressPoint(activePath, hit.enemy.step), color: t.critter.color, critterId: t.critter.id });
+                addCombatNumber(targetCell, damage, "damage", critical);
+                window.setTimeout(() => setAttackFx(fx => fx.filter(item => item.id !== fxId)), 520);
               }
-              const fxId = attackId.current++;
-              newEffects.push({ id: fxId, from: slotCell, to: targetCell, toPoint: pathProgressPoint(activePath, hit.enemy.step), color: t.critter.color, critterId: t.critter.id });
-              addCombatNumber(targetCell, damage, "damage", critical);
-              window.setTimeout(() => setAttackFx(fx => fx.filter(item => item.id !== fxId)), 520);
-            });
-            if (t.critter.ability === "push") target.step = Math.max(0, target.step - pushBackDistance(t.critter.tier, target.boss, bondLevel));
+            }
+            if (t.critter.ability === "push") target.step = Math.max(0, target.step - pushBackDistance(abilityTier, target.boss, bondLevel));
             setAttackFx(fx => [...fx, ...newEffects]);
           }
         });
-        if (fired.length) setTowers(ts => ts.map(t => fired.includes(t.slot) ? { ...t, cooldown: Math.max(1, t.critter.speed - starterAttackSpeedBonus(starterId)) } : t));
+        if (fired.length) setTowers(ts => ts.map(t => {
+          if (!fired.includes(t.slot)) return t;
+          return { ...t, cooldown: Math.max(1, t.critter.speed - starterAttackSpeedBonus(starterId)), ...focusUpdates.get(t.slot) };
+        }));
         const splitChildren: Enemy[] = [];
         for (const defeated of next.filter(enemy => enemy.hp <= 0 && !rewardedEnemyIds.current.has(enemy.id))) {
           rewardedEnemyIds.current.add(defeated.id);
@@ -659,9 +678,9 @@ export default function Home() {
               <span><small>DAMAGE</small><b>{Math.round(inspectedTower.critter.damage * starterDamageMultiplier(starterId) * runDamageMultiplier.current * waveDamageMultiplier)}</b></span>
               <span><small>RANGE</small><b>{inspectedTower.critter.range + starterRangeBonus(starterId)} tiles</b></span>
               <span><small>ATTACK TEMPO</small><b>{Math.max(1, inspectedTower.critter.speed - starterAttackSpeedBonus(starterId)) <= 2 ? "Fast" : inspectedTower.critter.speed <= 3 ? "Steady" : "Heavy"}</b></span>
-              <span><small>CRITICAL CHANCE</small><b>{Math.round(BASE_CRITICAL_CHANCE * 100)}% • ×{guardianCriticalDamageMultiplier(inspectedTower.critter, starterPiercingCriticalMultiplier(starterId))} damage</b></span>
+              <span><small>CRITICAL CHANCE</small><b>{Math.round(guardianCriticalChance(inspectedTower.critter, factionBonds[inspectedTower.critter.faction].level) * 100)}% • ×{guardianCriticalDamageMultiplier(inspectedTower.critter, starterPiercingCriticalMultiplier(starterId))} damage</b></span>
             </div>
-            <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>Automatically targets the enemy furthest along the path within range.</p></div>
+            <div className="abilityCard"><small>SPECIAL ABILITY</small><b>{inspectedTower.critter.skill}</b><p>{inspectedTower.critter.focusMaxStacks ? `Current Focus: ${inspectedTower.focusStacks || 0}/${inspectedTower.critter.focusMaxStacks} stacks. ` : ""}Automatically targets the enemy furthest along the path within range.</p></div>
             {inspectedEvolutions.length ? <div className="evolutionButtons">{inspectedEvolutions.map(evolution => <button key={evolution.id} className="upgradeButton" onClick={() => evolveTower(evolution)}>{evolution.evolutionPath === "alternative" ? "Alternative: " : ""}Evolve into {evolution.name} • 💠 {inspectedTower.critter.tier === 1 ? 1 : 2}</button>)}</div> : <button className="upgradeButton" disabled>Final evolution reached</button>}
             <button className="primary" onClick={closeTowerInfo}>Return to battle</button>
           </section>

@@ -22,7 +22,13 @@ export type Critter = {
   evolutionPath?: "core" | "alternative";
   sprite?: string;
   burnDamageTakenMultiplier?: number;
+  burnAuraRange?: number;
   criticalDamageMultiplier?: number;
+  criticalChanceBonus?: number;
+  criticalExtraTargets?: number;
+  focusAttackSpeedPerStack?: number;
+  focusMaxStacks?: number;
+  abilityTierOverride?: 1 | 2 | 3;
   rangeLimitOverride?: boolean;
 };
 
@@ -47,7 +53,7 @@ export type Enemy = {
   slowFactor?: number;
 };
 
-export type Tower = { slot: number; critter: Critter; cooldown: number; sourceId: string };
+export type Tower = { slot: number; critter: Critter; cooldown: number; sourceId: string; focusTargetId?: number; focusStacks?: number; focusAttackProgress?: number };
 export type BlessingId = "harvest" | "warden";
 export type BossReward = "heartseed" | "embercore" | "starcharm";
 export type AttackFx = { id: number; from: number; to: number; toPoint?: { x: number; y: number }; color: string; critterId: string };

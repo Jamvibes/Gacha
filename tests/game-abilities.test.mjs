@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnDamageMultiplierForEnemy, burnEffect, calculateHitDamage, criticalChanceBonus, guardianCriticalDamageMultiplier, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "../app/game/abilities.ts";
+import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, advanceFocusAttack, burnDamageMultiplierForEnemy, burnEffect, calculateHitDamage, criticalChanceBonus, guardianCriticalChance, guardianCriticalDamageMultiplier, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, selectCriticalExtraTargets, slowEffect } from "../app/game/abilities.ts";
 import { CRITTERS } from "../app/game/content.ts";
 import { FACTION_BY_ID, FACTIONS, factionBondLevel, getFactionBondStates } from "../app/game/factions.ts";
 
@@ -122,6 +122,44 @@ test("Coalroll strengthens burns only while enemies are inside its non-stacking 
   assert.equal(burnDamageMultiplierForEnemy(target, [nearby], path), 1.25);
   assert.equal(burnDamageMultiplierForEnemy(target, [nearby, secondNearby], path), 1.25);
   assert.equal(burnDamageMultiplierForEnemy(target, [distant], path), 1);
+});
+
+test("Coalroll evolutions expand only their burn aura range", () => {
+  const family = ["coalroll", "furnaceback", "cinderplate"].map(id => CRITTERS.find(critter => critter.id === id));
+  assert.deepEqual(family.map(critter => critter.burnAuraRange), [2, 3, 4]);
+  assert.deepEqual(family.map(critter => critter.burnDamageTakenMultiplier), [1.25, 1.25, 1.25]);
+  assert.deepEqual(family.map(critter => critter.abilityTierOverride), [1, 1, 1]);
+  assert.deepEqual(family.map(critter => [critter.damage, critter.speed, critter.range]), [[9, 3, 2], [9, 3, 2], [9, 3, 2]]);
+  const target = enemy(1, 2);
+  const tower = critter => ({ slot: 16, sourceId: "coalroll", critter, cooldown: 0 });
+  assert.equal(burnDamageMultiplierForEnemy(target, [tower(family[0])], [0, 1, 2, 3]), 1);
+  assert.equal(burnDamageMultiplierForEnemy(target, [tower(family[1])], [0, 1, 2, 3]), 1.25);
+});
+
+test("Ziphummer evolutions build capped Focus against the same enemy", () => {
+  const voltwing = CRITTERS.find(critter => critter.id === "voltwing");
+  let state = {};
+  const bonuses = [];
+  for (let attack = 0; attack < 8; attack++) {
+    const result = advanceFocusAttack(voltwing, 7, state);
+    bonuses.push(result.bonusAttacks);
+    state = result;
+  }
+  assert.equal(state.focusStacks, 4);
+  assert.ok(bonuses.some(bonus => bonus === 1), "Focus must periodically produce an additional attack");
+  const reset = advanceFocusAttack(voltwing, 8, state);
+  assert.equal(reset.focusStacks, 0);
+  assert.equal(reset.focusAttackProgress, 0);
+});
+
+test("Astralynx evolutions gain critical chance and Tier 3 gains a second critical target", () => {
+  const astralynx = CRITTERS.find(critter => critter.id === "astralynx");
+  const nebulynx = CRITTERS.find(critter => critter.id === "nebulynx");
+  const zodiaclynx = CRITTERS.find(critter => critter.id === "zodiaclynx");
+  assert.deepEqual([astralynx, nebulynx, zodiaclynx].map(critter => Math.round(guardianCriticalChance(critter) * 100)), [10, 15, 20]);
+  const targets = [enemy(1, 3), enemy(2, 2), enemy(3, 1)];
+  assert.deepEqual(selectCriticalExtraTargets(nebulynx, targets[0], targets), []);
+  assert.deepEqual(selectCriticalExtraTargets(zodiaclynx, targets[0], targets).map(target => target.id), [2]);
 });
 
 test("push grows with tier and bosses resist half of it", () => {
