@@ -25,6 +25,13 @@ export type EventChoiceDefinition = {
   effects: EventEffect[];
 };
 
+export type EventFallbackPresentation = {
+  title: string;
+  description: string;
+  resultMessage: string;
+  choice: Pick<EventChoiceDefinition, "icon" | "label" | "title" | "description">;
+};
+
 export type EventDefinition = {
   id: string;
   icon: string;
@@ -40,6 +47,7 @@ export type EventDefinition = {
   repeatable?: boolean;
   requirements?: EventRequirement[];
   dynamicChoices?: "sendUnplacedGuardians";
+  noEligibleRewardPresentation?: EventFallbackPresentation;
   choices: EventChoiceDefinition[];
 };
 
@@ -74,6 +82,17 @@ export const EVENTS: EventDefinition[] = [
     weight: 0,
     pool: false,
     repeatable: false,
+    noEligibleRewardPresentation: {
+      title: "They've sent what they could",
+      description: "No new Tier 2 guardians are able to answer, but your messenger returns safely with a small offering.",
+      resultMessage: "{guardian} returns safely. Every unlocked Tier 2 guardian has already joined this run, so the call brings back 2 Dewshards instead.",
+      choice: {
+        icon: "💠",
+        label: "WHAT THEY COULD SEND",
+        title: "Accept 2 Dewshards",
+        description: "Your messenger returns safely with 2 Dewshards gathered by those who answered the call.",
+      },
+    },
     choices: [
       { id: "welcome-reinforcements", icon: "🌟", label: "REINFORCEMENTS", title: "Welcome the reinforcements", description: "Your sent guardian returns with a random unlocked Tier 2 guardian you have not gained during this run. If none remain, gain 2 Dewshards instead.", resultMessage: "{guardian} returns with {reward}, who joins the run.", effects: [{ type: "returnAidGuardian" }, { type: "randomTierGuardian", tier: 2, fallbackDewshards: 2 }] },
     ],

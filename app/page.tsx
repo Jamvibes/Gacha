@@ -285,12 +285,10 @@ export default function Home() {
   const activeEvent = activeEventId ? EVENT_BY_ID[activeEventId] : null;
   const aidTierTwoCandidates = useMemo(() => eligibleAidTierTwoGuardians(owned, guardianForms), [owned, guardianForms]);
   const aidFallbackEvent = activeEventId === "aid-answered" && aidTierTwoCandidates.length === 0;
-  const activeEventChoices = activeEvent ? choicesForEvent(activeEvent, unplacedGuardians).map(choice => aidFallbackEvent && choice.id === "welcome-reinforcements" ? {
+  const fallbackPresentation = aidFallbackEvent ? activeEvent?.noEligibleRewardPresentation : null;
+  const activeEventChoices = activeEvent ? choicesForEvent(activeEvent, unplacedGuardians).map(choice => fallbackPresentation && choice.id === "welcome-reinforcements" ? {
     ...choice,
-    icon: "💠",
-    label: "WHAT THEY COULD SEND",
-    title: "Accept 2 Dewshards",
-    description: "Your messenger returns safely with 2 Dewshards gathered by those who answered the call.",
+    ...fallbackPresentation.choice,
   } : choice) : [];
   const ownedCritters = useMemo(() => CRITTERS.filter(c => owned.includes(c.id)), [owned]);
   const runCritters = useMemo(() => CRITTERS
@@ -411,9 +409,10 @@ export default function Home() {
         waveExtraEnemies.current = effect.extraEnemies;
       }
     }
+    const noEligibleRewardMessage = activeEvent?.noEligibleRewardPresentation?.resultMessage;
     setMessage(reward || !choice.effects.some(effect => effect.type === "randomTierGuardian")
       ? formatEventText(choice.resultMessage, eventGuardianName, reward?.name)
-      : `${eventGuardianName} returns safely. Every unlocked Tier 2 guardian has already joined this run, so the call brings back 2 Dewshards instead.`);
+      : formatEventText(noEligibleRewardMessage ?? choice.resultMessage, eventGuardianName));
   }
 
   function chooseBossReward(reward: BossReward) {
@@ -610,8 +609,8 @@ export default function Home() {
         {eventOpen && activeEvent && <div className="choiceOverlay eventOverlay" role="dialog" aria-modal="true" aria-labelledby="event-title">
           <section className="choicePanel eventPanel">
             <span className="eventIcon">{activeEvent.icon}</span><span className="eyebrow">BETWEEN THE WAVES</span>
-            <h1 id="event-title">{aidFallbackEvent ? "They've sent what they could" : activeEvent.title}</h1>
-            <p>{aidFallbackEvent ? "No new Tier 2 guardians are able to answer, but your messenger returns safely with a small offering." : activeEvent.description}</p>
+            <h1 id="event-title">{fallbackPresentation?.title ?? activeEvent.title}</h1>
+            <p>{fallbackPresentation?.description ?? activeEvent.description}</p>
             <div className="eventChoices">
               {activeEventChoices.map(choice => <button key={choice.id} onClick={() => chooseEvent(choice)}><span>{choice.icon}</span><div><small>{choice.label}</small><b>{choice.title}</b><p>{formatEventText(choice.description, selectedCritter.name)}</p></div></button>)}
             </div>

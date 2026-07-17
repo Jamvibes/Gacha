@@ -82,6 +82,13 @@ test("the aid reward uses only unlocked Tier 2 guardians not yet gained this run
   assert.equal(tierTwoAidReward(123, 2, 6, "emberfox", []), null);
 });
 
+test("the empty aid reward presentation lives with the aid event catalogue entry", () => {
+  const fallback = EVENT_BY_ID["aid-answered"].noEligibleRewardPresentation;
+  assert.equal(fallback.title, "They've sent what they could");
+  assert.match(fallback.choice.description, /2 Dewshards/);
+  assert.match(fallback.resultMessage, /2 Dewshards/);
+});
+
 test("one-off event rewards do not become run Blessings", () => {
   const spring = EVENT_BY_ID["moonlit-crossroads"].choices.find(choice => choice.id === "listen-to-spring");
   const sporeDew = EVENT_BY_ID["mushroom-circle"].choices.find(choice => choice.id === "drink-spore-dew");
