@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EVENT_BY_ID, EVENTS, choicesForEvent, eligiblePoolEvents, selectEventForWave, selectPooledEvent, selectScheduledEvent, tierTwoAidReward } from "../app/game/events.ts";
+import { EVENT_BY_ID, EVENTS, choicesForEvent, eligibleAidTierTwoGuardians, eligiblePoolEvents, selectEventForWave, selectPooledEvent, selectScheduledEvent, tierTwoAidReward } from "../app/game/events.ts";
 import { CRITTERS } from "../app/game/content.ts";
 import { BLESSING_BY_ID } from "../app/game/blessings.ts";
 
@@ -50,7 +50,9 @@ test("event and choice identifiers are unique and catalogue references are stabl
     assert.equal(new Set(event.choices.map(choice => choice.id)).size, event.choices.length);
     assert.ok(event.choices.length >= 1);
     for (const choice of event.choices) {
+      assert.ok(!choice.effects.some(effect => effect.type === "petals"), `${choice.id} must not award petals directly`);
       for (const effect of choice.effects.filter(effect => effect.type === "blessing")) assert.ok(BLESSING_BY_ID[effect.blessingId]);
+      for (const effect of choice.effects.filter(effect => effect.type === "nextWave")) assert.ok(!("petalBonus" in effect), `${choice.id} must not add event-based wave petals`);
     }
   }
 });
@@ -68,12 +70,23 @@ test("the aid event offers one send choice for every unplaced guardian form", ()
   assert.deepEqual(choices.map(choice => choice.id), ["send-emberfox", "send-cinderpup", "cannot-spare-anyone"]);
 });
 
-test("the aid reward is deterministic and always a core Tier 2 guardian", () => {
-  const first = tierTwoAidReward(123, 2, 6, "emberfox");
-  const second = tierTwoAidReward(123, 2, 6, "emberfox");
+test("the aid reward uses only unlocked Tier 2 guardians not yet gained this run", () => {
+  const candidates = eligibleAidTierTwoGuardians(["cinderpup", "ripplefin", "thornshell"], { cinderpup: 1 });
+  assert.deepEqual(candidates.map(critter => critter.id), ["ripplefin", "thornshell"]);
+  const candidateIds = candidates.map(critter => critter.id);
+  const first = tierTwoAidReward(123, 2, 6, "emberfox", candidateIds);
+  const second = tierTwoAidReward(123, 2, 6, "emberfox", candidateIds);
   assert.equal(first.id, second.id);
   assert.equal(first.tier, 2);
-  assert.equal(first.evolutionPath, "core");
+  assert.ok(candidateIds.includes(first.id));
+  assert.equal(tierTwoAidReward(123, 2, 6, "emberfox", []), null);
+});
+
+test("the empty aid reward presentation lives with the aid event catalogue entry", () => {
+  const fallback = EVENT_BY_ID["aid-answered"].noEligibleRewardPresentation;
+  assert.equal(fallback.title, "They've sent what they could");
+  assert.match(fallback.choice.description, /2 Dewshards/);
+  assert.match(fallback.resultMessage, /2 Dewshards/);
 });
 
 test("one-off event rewards do not become run Blessings", () => {

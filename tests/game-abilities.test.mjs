@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, burnEffect, calculateHitDamage, criticalChanceBonus, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, slowEffect } from "../app/game/abilities.ts";
+import { BASE_CRITICAL_CHANCE, CRITICAL_DAMAGE_MULTIPLIER, advanceFocusAttack, burnDamageMultiplierForEnemy, burnEffect, calculateHitDamage, criticalChanceBonus, guardianCriticalChance, guardianCriticalDamageMultiplier, pushBackDistance, rangeIndicatorDiameter, rollCritical, selectAbilityHits, selectBurnSpreadTarget, selectCriticalExtraTargets, slowEffect } from "../app/game/abilities.ts";
 import { CRITTERS } from "../app/game/content.ts";
 import { FACTION_BY_ID, FACTIONS, factionBondLevel, getFactionBondStates } from "../app/game/factions.ts";
 
@@ -99,6 +99,67 @@ test("critical hits use the shared chance and damage multiplier", () => {
   assert.equal(rollCritical(() => 0.19, criticalChanceBonus(2)), true);
   assert.equal(calculateHitDamage(20, 0.65, true), 26);
   assert.equal(calculateHitDamage(20, 1, true, 1, 2.5), 50);
+});
+
+test("new faction guardians have distinct specialist profiles", () => {
+  const coalroll = CRITTERS.find(critter => critter.id === "coalroll");
+  const ziphummer = CRITTERS.find(critter => critter.id === "ziphummer");
+  const astralynx = CRITTERS.find(critter => critter.id === "astralynx");
+  assert.equal(coalroll.range, 2);
+  assert.equal(coalroll.burnDamageTakenMultiplier, 1.25);
+  assert.equal(ziphummer.speed, 1);
+  assert.ok(ziphummer.damage < CRITTERS.find(critter => critter.id === "sparkit").damage);
+  assert.equal(guardianCriticalDamageMultiplier(astralynx), 2.5);
+});
+
+test("Coalroll strengthens burns only while enemies are inside its non-stacking aura", () => {
+  const coalroll = CRITTERS.find(critter => critter.id === "coalroll");
+  const path = [0, 1, 2, 3, 4, 5, 6, 7];
+  const target = enemy(1, 2);
+  const nearby = { slot: 8, sourceId: "coalroll", critter: coalroll, cooldown: 0 };
+  const secondNearby = { ...nearby, slot: 9 };
+  const distant = { ...nearby, slot: 63 };
+  assert.equal(burnDamageMultiplierForEnemy(target, [nearby], path), 1.25);
+  assert.equal(burnDamageMultiplierForEnemy(target, [nearby, secondNearby], path), 1.25);
+  assert.equal(burnDamageMultiplierForEnemy(target, [distant], path), 1);
+});
+
+test("Coalroll evolutions expand only their burn aura range", () => {
+  const family = ["coalroll", "furnaceback", "cinderplate"].map(id => CRITTERS.find(critter => critter.id === id));
+  assert.deepEqual(family.map(critter => critter.burnAuraRange), [2, 3, 4]);
+  assert.deepEqual(family.map(critter => critter.burnDamageTakenMultiplier), [1.25, 1.25, 1.25]);
+  assert.deepEqual(family.map(critter => critter.abilityTierOverride), [1, 1, 1]);
+  assert.deepEqual(family.map(critter => [critter.damage, critter.speed, critter.range]), [[9, 3, 2], [9, 3, 2], [9, 3, 2]]);
+  const target = enemy(1, 2);
+  const tower = critter => ({ slot: 16, sourceId: "coalroll", critter, cooldown: 0 });
+  assert.equal(burnDamageMultiplierForEnemy(target, [tower(family[0])], [0, 1, 2, 3]), 1);
+  assert.equal(burnDamageMultiplierForEnemy(target, [tower(family[1])], [0, 1, 2, 3]), 1.25);
+});
+
+test("Ziphummer evolutions build capped Focus against the same enemy", () => {
+  const voltwing = CRITTERS.find(critter => critter.id === "voltwing");
+  let state = {};
+  const bonuses = [];
+  for (let attack = 0; attack < 8; attack++) {
+    const result = advanceFocusAttack(voltwing, 7, state);
+    bonuses.push(result.bonusAttacks);
+    state = result;
+  }
+  assert.equal(state.focusStacks, 4);
+  assert.ok(bonuses.some(bonus => bonus === 1), "Focus must periodically produce an additional attack");
+  const reset = advanceFocusAttack(voltwing, 8, state);
+  assert.equal(reset.focusStacks, 0);
+  assert.equal(reset.focusAttackProgress, 0);
+});
+
+test("Astralynx evolutions gain critical chance and Tier 3 gains a second critical target", () => {
+  const astralynx = CRITTERS.find(critter => critter.id === "astralynx");
+  const nebulynx = CRITTERS.find(critter => critter.id === "nebulynx");
+  const zodiaclynx = CRITTERS.find(critter => critter.id === "zodiaclynx");
+  assert.deepEqual([astralynx, nebulynx, zodiaclynx].map(critter => Math.round(guardianCriticalChance(critter) * 100)), [10, 15, 20]);
+  const targets = [enemy(1, 3), enemy(2, 2), enemy(3, 1)];
+  assert.deepEqual(selectCriticalExtraTargets(nebulynx, targets[0], targets), []);
+  assert.deepEqual(selectCriticalExtraTargets(zodiaclynx, targets[0], targets).map(target => target.id), [2]);
 });
 
 test("push grows with tier and bosses resist half of it", () => {

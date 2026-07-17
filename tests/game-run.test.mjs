@@ -38,7 +38,7 @@ test("blessing actions atomically apply their run effects", () => {
   const choices = EVENT_BY_ID["moonlit-crossroads"].choices;
   const harvest = runReducer(base, { type: "RESOLVE_EVENT", choice: choices.find(choice => choice.id === "harvest-moonpetals"), selectedName: "Emberfox" });
   assert.equal(harvest.dewshards, 2);
-  assert.equal(harvest.blessings.harvest, 1);
+  assert.equal(harvest.blessings.harvest, 0);
   assert.equal(harvest.eventOpen, false);
   assert.equal(harvest.activeEventId, null);
   assert.deepEqual(harvest.recentEventIds, ["moonlit-crossroads"]);
@@ -175,6 +175,21 @@ test("answered aid returns the messenger and grants the selected Tier 2 reward",
   assert.equal(rewarded.guardianCopies.emberfox, 1);
   assert.equal(rewarded.guardianCopies.bubblefin, 1);
   assert.ok(rewarded.runUnlocked.includes("bubblefin"));
+});
+
+test("answered aid grants Dewshards when no eligible unlocked Tier 2 remains", () => {
+  const base = {
+    ...createInitialRunState(),
+    guardianCopies: { emberfox: 0 },
+    guardianForms: { cinderpup: 0 },
+    aidMission: { guardianId: "cinderpup", wavesRemaining: 0 },
+    eventOpen: true,
+    activeEventId: "aid-answered",
+  };
+  const choice = EVENT_BY_ID["aid-answered"].choices[0];
+  const rewarded = runReducer(base, { type: "RESOLVE_EVENT", choice, selectedName: "Cinderpup" });
+  assert.equal(rewarded.guardianForms.cinderpup, 1);
+  assert.equal(rewarded.dewshards, 2);
 });
 
 test("declining aid grants one Dewshard and damage for exactly the next wave", () => {
